@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+.git
+.vscode
+.next
+apps/frontend/.next
+dist
+apps/backend/dist
+packages/shared/dist
+.env.local
+*.log
+*.md
+.prettierrc
+.eslintrc.js
+.husky

@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  name       String?
+  email      String   @unique
+  password   String
+  telegramId BigInt?  @unique // para vincular conta Telegram
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  transactions Transaction[]
+  categories   Category[]
+  budgets      Budget[]
+}
+
+model Category {
+  id     Int     @id @default(autoincrement())
+  name   String
+  color  String?
+  icon   String?
+  userId Int
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions Transaction[]
+  budgets      Budget[]
+}
+
+model Transaction {
+  id          Int             @id @default(autoincrement())
+  userId      Int
+  description String
+  amount      Decimal // sempre com sinal (positivo = income, negativo = expense)
+  type        TransactionType
+  categoryId  Int
+  date        DateTime
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+}
+
+model Budget {
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  categoryId Int?
+  month      String // "YYYY-MM"
+  amount     Decimal
+  type       BudgetType
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum BudgetType {
+  INCOME
+  EXPENSE
+  TOTAL
+}
