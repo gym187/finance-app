@@ -21,9 +21,9 @@ function nextDueLabel(dueDayOfMonth: number): string {
 }
 
 function progressPct(loan: Loan): number {
-  const total = loan.principalAmount;
-  if (total <= 0) return 0;
-  return Math.min(100, (loan.totalPaid / total) * 100);
+  if (loan.principalAmount <= 0) return 0;
+  const principalPaid = loan.principalAmount - loan.currentBalance;
+  return Math.min(100, Math.max(0, (principalPaid / loan.principalAmount) * 100));
 }
 
 export default function LoansPage() {
@@ -174,8 +174,8 @@ export default function LoansPage() {
                   {/* Progress bar */}
                   <div className="space-y-1 mb-3">
                     <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Pago: {formatBRL(loan.totalPaid)}</span>
-                      <span>Total: {formatBRL(loan.principalAmount)}</span>
+                      <span>Amortizado: {formatBRL(loan.principalAmount - loan.currentBalance)}</span>
+                      <span>Principal: {formatBRL(loan.principalAmount)}</span>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div
@@ -183,7 +183,7 @@ export default function LoansPage() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <p className="text-xs text-muted-foreground">{pct.toFixed(1)}% quitado</p>
+                    <p className="text-xs text-muted-foreground">{pct.toFixed(1)}% do principal quitado</p>
                   </div>
 
                   {/* Key numbers */}
