@@ -6,6 +6,7 @@ import { env } from '../config/env';
 import { AppError } from '../middleware/error.middleware';
 import { RegisterInput, LoginInput } from '../validators/auth.validator';
 import { emailService } from './email.service';
+import { logger } from '../config/logger';
 
 const SALT_ROUNDS = 12;
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
@@ -47,7 +48,9 @@ export const authService = {
     });
 
     await createDefaultCategories(user.id);
-    await emailService.sendEmailVerification(user.email, verificationToken);
+    emailService.sendEmailVerification(user.email, verificationToken).catch((err) =>
+      logger.warn({ err }, 'Falha ao enviar email de verificação — registro concluído mesmo assim'),
+    );
 
     const tokens = generateTokens(user.id);
     return { user, ...tokens };

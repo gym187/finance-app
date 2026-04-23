@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { User } from '@finance-app/shared';
 
@@ -20,6 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // Validate session via profile endpoint on mount
   useEffect(() => {
@@ -41,16 +43,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.auth.login(email, password);
     if (res.success && res.data) {
+      queryClient.clear();
       setUser((res.data as { user: User }).user);
     }
-  }, []);
+  }, [queryClient]);
 
   const register = useCallback(async (email: string, password: string, name?: string) => {
     const res = await api.auth.register(email, password, name);
     if (res.success && res.data) {
+      queryClient.clear();
       setUser((res.data as { user: User }).user);
     }
-  }, []);
+  }, [queryClient]);
 
   const logout = useCallback(async () => {
     try {
@@ -58,10 +62,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     } finally {
+      queryClient.clear();
       setUser(null);
       router.push('/login');
     }
-  }, [router]);
+  }, [router, queryClient]);
 
   return (
     <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, register, logout }}>
