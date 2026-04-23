@@ -41,42 +41,44 @@ app.use(
   })
 );
 
-// ─── Rate limiting ────────────────────────────────────────────────────────────
-// Global: 300 req / 15 min por IP
-app.use(
-  '/api',
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 300,
-    message: { success: false, error: 'Muitas requisições. Tente novamente em 15 minutos.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+// ─── Rate limiting (apenas em produção) ──────────────────────────────────────
+if (env.NODE_ENV === 'production') {
+  // Global: 300 req / 15 min por IP
+  app.use(
+    '/api',
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 300,
+      message: { success: false, error: 'Muitas requisições. Tente novamente em 15 minutos.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
 
-// Auth: 20 req / 15 min
-app.use(
-  '/api/auth',
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    message: { success: false, error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+  // Login e register: 20 tentativas / 15 min (não inclui /profile ou /refresh)
+  app.use(
+    ['/api/auth/login', '/api/auth/register'],
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 20,
+      message: { success: false, error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
 
-// Password reset: 5 req / 15 min
-app.use(
-  ['/api/auth/forgot-password', '/api/auth/reset-password'],
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 5,
-    message: { success: false, error: 'Muitas tentativas de redefinição. Tente novamente em 15 minutos.' },
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+  // Password reset: 5 req / 15 min
+  app.use(
+    ['/api/auth/forgot-password', '/api/auth/reset-password'],
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      max: 5,
+      message: { success: false, error: 'Muitas tentativas de redefinição. Tente novamente em 15 minutos.' },
+      standardHeaders: true,
+      legacyHeaders: false,
+    })
+  );
+}
 
 // ─── Body parsing ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '1mb' }));
