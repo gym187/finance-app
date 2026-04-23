@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -129,6 +129,7 @@ export function Sidebar() {
       {/* Mobile sidebar */}
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent>
+          <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           <SidebarContent onNavClick={() => setOpen(false)} />
         </SheetContent>
       </Sheet>

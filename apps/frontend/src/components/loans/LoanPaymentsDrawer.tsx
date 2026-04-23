@@ -1,6 +1,6 @@
 'use client';
 
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { useLoanPayments, useLoanSchedule } from '@/hooks/useLoans';
@@ -22,9 +22,9 @@ export function LoanPaymentsDrawer({ open, onClose, loanId, loanName }: Props) {
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-        <div className="mb-4">
-          <p className="text-lg font-semibold">{loanName}</p>
-        </div>
+        <SheetHeader className="mb-4">
+          <SheetTitle>{loanName}</SheetTitle>
+        </SheetHeader>
 
         {/* Tabs */}
         <div className="flex gap-1 rounded-lg bg-muted p-1 mb-4">
