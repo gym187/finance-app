@@ -4,7 +4,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import pinoHttp from 'pino-http';
 import { env } from './config/env';
+import { logger } from './config/logger';
+import { csrfProtect } from './middleware/csrf.middleware';
 import routes from './routes';
 import { errorHandler } from './middleware/error.middleware';
 
@@ -28,13 +31,48 @@ app.use(
   })
 );
 
+// ─── HTTP request logging ─────────────────────────────────────────────────────
+app.use(
+  pinoHttp({
+    logger,
+    customLogLevel: (_req, res) => (res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
+    customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
+    redact: ['req.headers.authorization', 'req.body.password'],
+  })
+);
+
 // ─── Rate limiting ────────────────────────────────────────────────────────────
+// Global: 300 req / 15 min por IP
+app.use(
+  '/api',
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    message: { success: false, error: 'Muitas requisições. Tente novamente em 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+// Auth: 20 req / 15 min
 app.use(
   '/api/auth',
   rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
+    windowMs: 15 * 60 * 1000,
     max: 20,
     message: { success: false, error: 'Muitas tentativas. Tente novamente em 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+);
+
+// Password reset: 5 req / 15 min
+app.use(
+  ['/api/auth/forgot-password', '/api/auth/reset-password'],
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { success: false, error: 'Muitas tentativas de redefinição. Tente novamente em 15 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
   })
@@ -44,6 +82,9 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// ─── CSRF protection (mutating requests with active session) ──────────────────
+app.use(csrfProtect);
 
 // ─── API routes ───────────────────────────────────────────────────────────────
 app.use('/api', routes);

@@ -16,7 +16,33 @@ import { useBudgets } from '@/hooks/useBudgets';
 import { formatBRL } from '@/lib/formatters';
 import { api } from '@/lib/api';
 import { exportReportPDF } from '@/lib/exportPDF';
+import { WealthProjection } from '@/components/reports/WealthProjection';
+import { TOOLTIP_CURSOR_STYLE } from '@/lib/chartUtils';
 import type { Transaction } from '@finance-app/shared';
+
+function BarTooltip({ active, payload, label }: { active?: boolean; payload?: { value: number; payload: { color: string } }[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 shadow-lg text-popover-foreground text-sm">
+      <p className="mb-1 font-medium">{label}</p>
+      <p className="font-semibold">{formatBRL(payload[0].value)}</p>
+    </div>
+  );
+}
+
+function ReportPieTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number; payload: { color: string } }[] }) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 shadow-lg text-popover-foreground text-sm">
+      <div className="flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.payload.color }} />
+        <span className="font-medium">{item.name}</span>
+      </div>
+      <p className="mt-0.5 font-semibold">{formatBRL(item.value)}</p>
+    </div>
+  );
+}
 
 export default function ReportsPage() {
   const now = new Date();
@@ -46,7 +72,8 @@ export default function ReportsPage() {
     const name = tx.category?.name ?? 'Outros';
     const color = tx.category?.color ?? '#6b7280';
     if (!catMap.has(name)) catMap.set(name, { name, value: 0, color });
-    catMap.get(name)!.value += Math.abs(Number(tx.amount));
+    const entry = catMap.get(name);
+    if (entry) entry.value += Math.abs(Number(tx.amount));
   }
   const categoryData = Array.from(catMap.values()).sort((a, b) => b.value - a.value);
 
@@ -176,7 +203,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tickFormatter={(v) => formatBRL(v)} tick={{ fontSize: 10 }} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => formatBRL(v)} />
+                  <Tooltip content={<BarTooltip />} cursor={TOOLTIP_CURSOR_STYLE} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                     {categoryData.map((entry, i) => (
                       <Cell key={i} fill={entry.color} />
@@ -206,7 +233,7 @@ export default function ReportsPage() {
                       <Cell key={i} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(v: number) => formatBRL(v)} />
+                  <Tooltip content={<ReportPieTooltip />} />
                   <Legend formatter={(v) => <span className="text-xs">{v}</span>} />
                 </PieChart>
               </ResponsiveContainer>
@@ -223,6 +250,9 @@ export default function ReportsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Wealth projection */}
+      <WealthProjection />
 
       {/* Preview modal */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>

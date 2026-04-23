@@ -1,31 +1,45 @@
 import { app } from './app';
 import { env } from './config/env';
+import { logger } from './config/logger';
 import { prisma } from './config/prisma';
 import { startBot } from './bot/bot';
+import { recurringService } from './services/recurring.service';
+import { notificationService } from './services/notification.service';
 
 const PORT = parseInt(env.PORT, 10);
 
 async function main() {
   try {
-    // Test database connection
     await prisma.$connect();
-    console.log('✅ Banco de dados conectado');
+    logger.info('Banco de dados conectado');
 
-    // Start Express server
     app.listen(PORT, () => {
-      console.log(`🚀 Backend rodando em http://localhost:${PORT}`);
-      console.log(`   Ambiente: ${env.NODE_ENV}`);
+      logger.info({ port: PORT, env: env.NODE_ENV }, `Backend rodando em http://localhost:${PORT}`);
     });
 
-    // Start Telegram Bot (if token is configured)
+    const generated = await recurringService.processDue();
+    if (generated > 0) logger.info({ generated }, 'Transações recorrentes geradas no startup');
+
+    notificationService.checkLoanDueAlerts().catch(() => {});
+
+    setInterval(async () => {
+      try {
+        const n = await recurringService.processDue();
+        if (n > 0) logger.info({ generated: n }, 'Transações recorrentes geradas');
+      } catch (err) {
+        logger.error({ err }, 'Erro ao processar recorrências');
+      }
+      notificationService.checkLoanDueAlerts().catch(() => {});
+    }, 60 * 60 * 1000);
+
     if (env.TELEGRAM_BOT_TOKEN) {
       startBot(app);
-      console.log('🤖 Telegram Bot iniciado');
+      logger.info('Telegram Bot iniciado');
     } else {
-      console.log('ℹ️  TELEGRAM_BOT_TOKEN não configurado - bot desabilitado');
+      logger.debug('TELEGRAM_BOT_TOKEN não configurado — bot desabilitado');
     }
   } catch (err) {
-    console.error('❌ Falha ao iniciar servidor:', err);
+    logger.error({ err }, 'Falha ao iniciar servidor');
     await prisma.$disconnect();
     process.exit(1);
   }
@@ -33,9 +47,8 @@ async function main() {
 
 main();
 
-// Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM recebido. Encerrando graciosamente...');
+  logger.info('SIGTERM recebido — encerrando graciosamente');
   await prisma.$disconnect();
   process.exit(0);
 });

@@ -1,15 +1,19 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Moon, Sun, Menu, Bell } from 'lucide-react';
+import { Moon, Sun, Menu } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
-import { useDashboard } from '@/hooks/useDashboard';
 import { useMobileSidebar } from '@/components/layout/Sidebar';
+import { NotificationCenter } from '@/components/layout/NotificationCenter';
 
 const pathLabels: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/transactions': 'Transações',
+  '/recurring': 'Contas Recorrentes',
+  '/investments': 'Investimentos',
+  '/goals': 'Metas de Poupança',
+  '/loans': 'Empréstimos',
   '/categories': 'Categorias',
   '/budgets': 'Orçamentos',
   '/reports': 'Relatórios',
@@ -18,11 +22,9 @@ const pathLabels: Record<string, string> = {
 export function Header() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const { data: dashboard } = useDashboard();
   const { setOpen } = useMobileSidebar();
 
   const label = pathLabels[pathname] ?? 'Página';
-  const alertCount = dashboard?.alerts?.length ?? 0;
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-card px-4 sm:h-16 sm:px-6">
@@ -34,19 +36,8 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
-        {/* Alerts indicator */}
-        {alertCount > 0 && (
-          <div className="relative">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-5 w-5" />
-            </Button>
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-              {alertCount}
-            </span>
-          </div>
-        )}
+        <NotificationCenter />
 
-        {/* Theme toggle */}
         <Button
           variant="ghost"
           size="icon"

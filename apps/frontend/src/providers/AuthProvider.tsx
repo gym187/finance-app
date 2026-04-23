@@ -21,43 +21,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  // Load user from localStorage on mount
+  // Validate session via profile endpoint on mount
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    const token = localStorage.getItem('accessToken');
-    if (stored && token) {
-      try {
-        setUser(JSON.parse(stored));
-      } catch {
-        api.clearSession();
-      }
-    }
-    setIsLoading(false);
+    api.auth
+      .profile()
+      .then((res) => {
+        if (res.success && res.data) {
+          setUser(res.data as User);
+        }
+      })
+      .catch(() => {
+        // 401 handled by ApiClient (tryRefresh → redirect if expired)
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await api.auth.login(email, password);
     if (res.success && res.data) {
-      const { accessToken, refreshToken, user: u } = res.data as {
-        accessToken: string;
-        refreshToken: string;
-        user: User;
-      };
-      api.saveSession(accessToken, refreshToken, u);
-      setUser(u);
+      setUser((res.data as { user: User }).user);
     }
   }, []);
 
   const register = useCallback(async (email: string, password: string, name?: string) => {
     const res = await api.auth.register(email, password, name);
     if (res.success && res.data) {
-      const { accessToken, refreshToken, user: u } = res.data as {
-        accessToken: string;
-        refreshToken: string;
-        user: User;
-      };
-      api.saveSession(accessToken, refreshToken, u);
-      setUser(u);
+      setUser((res.data as { user: User }).user);
     }
   }, []);
 
@@ -67,16 +58,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     } finally {
-      api.clearSession();
       setUser(null);
       router.push('/login');
     }
   }, [router]);
 
   return (
-    <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, login, register, logout }}
-    >
+    <AuthContext.Provider value={{ user, isLoading, isAuthenticated: !!user, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

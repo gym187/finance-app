@@ -193,6 +193,219 @@ Backend: `http://localhost:3001` · Frontend: `http://localhost:3002`
 
 > O bot reconhece sessões vinculadas automaticamente — mesmo que o container reinicie, não é necessário fazer `/login` novamente.
 
+---
+
+## Deploy em Proxmox / VPS
+
+Guia para deploy em uma VM Proxmox (Debian/Ubuntu) ou qualquer VPS Linux.
+
+### Requisitos da VM/VPS
+
+- Debian 12 / Ubuntu 22.04+ (ou derivado)
+- 1 vCPU + 1 GB RAM (mínimo) — recomendado 2 vCPU + 2 GB
+- 10 GB de disco livre
+- Porta 80/443 liberada no firewall
+
+### 1. Instale Docker e Docker Compose
+
+```bash
+# Atualize o sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instale dependências
+sudo apt install -y ca-certificates curl gnupg
+
+# Adicione a chave GPG do Docker
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Adicione o repositório (Ubuntu — para Debian troque "ubuntu" por "debian")
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Instale Docker
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+# Permita seu usuário usar docker sem sudo
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+### 2. Clone o projeto e configure
+
+```bash
+git clone <url> /opt/appfin && cd /opt/appfin
+cp .env.example .env
+```
+
+Edite o `.env` com valores de produção:
+
+```dotenv
+# ─── Banco ────────────────────────────────────────────────────────
+POSTGRES_USER=finance
+POSTGRES_PASSWORD=UMA_SENHA_FORTE_AQUI        # ⚠️ obrigatório trocar
+POSTGRES_DB=financedb
+
+# ─── JWT ──────────────────────────────────────────────────────────
+JWT_SECRET=<gere com: openssl rand -base64 48>
+JWT_REFRESH_SECRET=<gere com: openssl rand -base64 48>
+
+# ─── URLs (ajuste para seu domínio ou IP) ─────────────────────────
+NEXT_PUBLIC_API_URL=https://seu-dominio.com
+ALLOWED_ORIGINS=https://seu-dominio.com
+
+# ─── Telegram Bot (opcional) ──────────────────────────────────────
+TELEGRAM_BOT_TOKEN=
+WEBHOOK_URL=https://seu-dominio.com
+```
+
+> **Importante:** `NEXT_PUBLIC_API_URL` é compilado no build do frontend. Se mudar, faça rebuild: `docker compose up -d --build frontend`.
+
+### 3. Suba a aplicação
+
+```bash
+docker compose up -d --build
+```
+
+Verifique se tudo está rodando:
+
+```bash
+docker compose ps
+docker compose logs -f
+```
+
+### 4. Configure reverse proxy com Traefik + HTTPS
+
+Traefik roda como container Docker e obtém certificados SSL automaticamente via Let's Encrypt.
+
+Crie o arquivo `docker-compose.traefik.yml` na raiz do projeto:
+
+```yaml
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=seu-email@exemplo.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_certs:/letsencrypt
+
+volumes:
+  traefik_certs:
+```
+
+Adicione labels aos serviços no `docker-compose.yml`:
+
+```yaml
+  backend:
+    # ... configurações existentes ...
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`seu-dominio.com`) && PathPrefix(`/api`, `/bot`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=3001"
+
+  frontend:
+    # ... configurações existentes ...
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`seu-dominio.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.frontend.priority=1"
+```
+
+> **Nota:** o router do backend tem prioridade maior automaticamente por ter `PathPrefix`, então as rotas `/api` e `/bot` vão para o backend e todo o resto vai para o frontend.
+
+Suba tudo junto:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
+```
+
+Em produção, remova os `ports` expostos do backend e frontend no `docker-compose.yml` (Traefik se comunica pela rede interna do Docker):
+
+```yaml
+  backend:
+    # remova ou comente:
+    # ports:
+    #   - "3001:3001"
+
+  frontend:
+    # remova ou comente:
+    # ports:
+    #   - "3002:3000"
+```
+
+Após configurar, atualize o `.env`:
+
+```dotenv
+NEXT_PUBLIC_API_URL=https://seu-dominio.com
+ALLOWED_ORIGINS=https://seu-dominio.com
+WEBHOOK_URL=https://seu-dominio.com
+```
+
+Rebuild (necessário porque `NEXT_PUBLIC_API_URL` é compilado no build):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
+```
+
+### 5. Atualizações
+
+```bash
+cd /opt/appfin
+git pull
+docker compose up -d --build
+```
+
+### 6. Backup do banco de dados
+
+```bash
+# Backup manual
+docker exec finance_postgres pg_dump -U finance financedb > backup_$(date +%F).sql
+
+# Restaurar
+cat backup_2026-04-13.sql | docker exec -i finance_postgres psql -U finance financedb
+```
+
+Para backups automáticos, adicione ao crontab:
+
+```bash
+crontab -e
+# Adicione (backup diário às 3h):
+0 3 * * * docker exec finance_postgres pg_dump -U finance financedb | gzip > /opt/backups/appfin_$(date +\%F).sql.gz
+```
+
+### Dicas para Proxmox
+
+- **Firewall:** libere as portas 80 e 443 na aba Firewall da VM (ou do datacenter)
+- **Recursos:** comece com 2 vCPU / 2 GB RAM; ajuste conforme uso
+- **Snapshots:** tire um snapshot da VM antes de atualizações grandes
+- **IP fixo:** configure IP estático na VM em `/etc/network/interfaces` ou via Cloud-Init
+
+---
+
 ## Estrutura do projeto
 
 ```

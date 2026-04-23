@@ -8,6 +8,7 @@ interface TransactionFilters {
   limit?: number;
   type?: string;
   categoryId?: number;
+  tagId?: number | string;
   startDate?: string;
   endDate?: string;
   search?: string;
@@ -19,6 +20,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
   if (filters.limit) params.limit = String(filters.limit);
   if (filters.type) params.type = filters.type;
   if (filters.categoryId) params.categoryId = String(filters.categoryId);
+  if (filters.tagId) params.tagId = String(filters.tagId);
   if (filters.startDate) params.startDate = filters.startDate;
   if (filters.endDate) params.endDate = filters.endDate;
   if (filters.search) params.search = filters.search;

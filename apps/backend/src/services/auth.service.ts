@@ -1,11 +1,15 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 import { AppError } from '../middleware/error.middleware';
 import { RegisterInput, LoginInput } from '../validators/auth.validator';
+import { emailService } from './email.service';
 
 const SALT_ROUNDS = 12;
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
 function generateTokens(userId: number) {
   const accessToken = jwt.sign({ userId }, env.JWT_SECRET, {
@@ -17,6 +21,10 @@ function generateTokens(userId: number) {
   return { accessToken, refreshToken };
 }
 
+function generateSecureToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 export const authService = {
   async register(data: RegisterInput) {
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
@@ -25,14 +33,21 @@ export const authService = {
     }
 
     const hashedPassword = await bcrypt.hash(data.password, SALT_ROUNDS);
+    const verificationToken = generateSecureToken();
 
     const user = await prisma.user.create({
-      data: { name: data.name, email: data.email, password: hashedPassword },
-      select: { id: true, name: true, email: true, createdAt: true, updatedAt: true },
+      data: {
+        name: data.name,
+        email: data.email,
+        password: hashedPassword,
+        emailVerificationToken: verificationToken,
+        emailVerificationExpires: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+      },
+      select: { id: true, name: true, email: true, emailVerified: true, createdAt: true, updatedAt: true },
     });
 
-    // Create default categories for new user
     await createDefaultCategories(user.id);
+    await emailService.sendEmailVerification(user.email, verificationToken);
 
     const tokens = generateTokens(user.id);
     return { user, ...tokens };
@@ -54,12 +69,86 @@ export const authService = {
     return { user: userWithoutPassword, ...tokens };
   },
 
+  async verifyEmail(token: string) {
+    const user = await prisma.user.findUnique({ where: { emailVerificationToken: token } });
+    if (!user || !user.emailVerificationExpires) {
+      throw new AppError(400, 'Token de verificação inválido');
+    }
+    if (user.emailVerificationExpires < new Date()) {
+      throw new AppError(400, 'Token de verificação expirado');
+    }
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpires: null,
+      },
+    });
+  },
+
+  async resendVerificationEmail(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return; // silencia para não revelar se email existe
+
+    if (user.emailVerified) {
+      throw new AppError(400, 'Email já verificado');
+    }
+
+    const verificationToken = generateSecureToken();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationToken: verificationToken,
+        emailVerificationExpires: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+      },
+    });
+
+    await emailService.sendEmailVerification(email, verificationToken);
+  },
+
+  async requestPasswordReset(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) return; // silencia para não revelar se email existe
+
+    const resetToken = generateSecureToken();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: resetToken,
+        passwordResetExpires: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    await emailService.sendPasswordReset(email, resetToken);
+  },
+
+  async resetPassword(token: string, newPassword: string) {
+    const user = await prisma.user.findUnique({ where: { passwordResetToken: token } });
+    if (!user || !user.passwordResetExpires) {
+      throw new AppError(400, 'Token de redefinição inválido');
+    }
+    if (user.passwordResetExpires < new Date()) {
+      throw new AppError(400, 'Token de redefinição expirado');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+  },
+
   async refreshTokens(refreshToken: string) {
     try {
       const payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { userId: number };
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
-        select: { id: true, name: true, email: true, createdAt: true, updatedAt: true },
+        select: { id: true, name: true, email: true, emailVerified: true, createdAt: true, updatedAt: true },
       });
       if (!user) {
         throw new AppError(404, 'Usuário não encontrado');
@@ -79,6 +168,7 @@ export const authService = {
         id: true,
         name: true,
         email: true,
+        emailVerified: true,
         telegramId: true,
         createdAt: true,
         updatedAt: true,
@@ -94,7 +184,7 @@ export const authService = {
     const user = await prisma.user.update({
       where: { id: userId },
       data,
-      select: { id: true, name: true, email: true, createdAt: true, updatedAt: true },
+      select: { id: true, name: true, email: true, emailVerified: true, createdAt: true, updatedAt: true },
     });
     return user;
   },

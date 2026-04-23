@@ -11,4 +11,12 @@ router.post('/logout', authController.logout);
 router.get('/profile', authenticate, authController.profile);
 router.patch('/profile', authenticate, authController.updateProfile);
 
+// Email verification
+router.post('/verify-email', authController.verifyEmail);
+router.post('/resend-verification', authController.resendVerification);
+
+// Password reset
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
+
 export default router;

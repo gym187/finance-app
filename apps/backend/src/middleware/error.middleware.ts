@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import { logger } from '../config/logger';
 
 export class AppError extends Error {
   constructor(
@@ -41,6 +42,6 @@ export const errorHandler = (err: Error, _req: Request, res: Response, _next: Ne
     return;
   }
 
-  console.error('Erro não tratado:', err);
+  logger.error({ err }, 'Erro não tratado');
   res.status(500).json({ success: false, error: 'Erro interno do servidor' });
 };

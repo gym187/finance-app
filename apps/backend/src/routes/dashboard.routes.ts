@@ -6,5 +6,6 @@ const router = Router();
 
 router.use(authenticate);
 router.get('/', dashboardController.getData);
+router.get('/projection', dashboardController.getProjection);
 
 export default router;

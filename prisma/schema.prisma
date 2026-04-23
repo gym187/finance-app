@@ -13,12 +13,27 @@ model User {
   email      String   @unique
   password   String
   telegramId BigInt?  @unique // para vincular conta Telegram
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 
-  transactions Transaction[]
-  categories   Category[]
-  budgets      Budget[]
+  emailVerified            Boolean   @default(false)
+  emailVerificationToken   String?   @unique
+  emailVerificationExpires DateTime?
+
+  passwordResetToken   String?   @unique
+  passwordResetExpires DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions          Transaction[]
+  categories            Category[]
+  budgets               Budget[]
+  investments           Investment[]
+  recurringTransactions RecurringTransaction[]
+  savingsGoals          SavingsGoal[]
+  loans                 Loan[]
+  tags                  Tag[]
+  pushSubscriptions     PushSubscription[]
+  notifications         AppNotification[]
 }
 
 model Category {
@@ -29,8 +44,9 @@ model Category {
   userId Int
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  transactions Transaction[]
-  budgets      Budget[]
+  transactions          Transaction[]
+  budgets               Budget[]
+  recurringTransactions RecurringTransaction[]
 }
 
 model Transaction {
@@ -44,8 +60,16 @@ model Transaction {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  currency       String   @default("BRL")
+  amountOriginal Decimal? // valor na moeda original (null quando BRL)
+  exchangeRate   Decimal? // cotação no momento (1 unidade = X BRL)
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  tags     TransactionTag[]
+
+  @@index([userId, date])
+  @@index([userId, categoryId])
 }
 
 model Budget {
@@ -56,8 +80,13 @@ model Budget {
   amount     Decimal
   type       BudgetType
 
+  alerted80  Boolean @default(false)
+  alerted100 Boolean @default(false)
+
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([userId, month])
 }
 
 enum TransactionType {
@@ -69,4 +98,180 @@ enum BudgetType {
   INCOME
   EXPENSE
   TOTAL
+}
+
+model Investment {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  name          String
+  ticker        String?
+  type          InvestmentType
+  quantity      Decimal
+  averagePrice  Decimal
+  currentPrice  Decimal?
+  targetPercent Decimal?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum InvestmentType {
+  STOCK
+  FII
+  ETF
+  CRYPTO
+  FIXED_INCOME
+  OTHER
+}
+
+model RecurringTransaction {
+  id          Int               @id @default(autoincrement())
+  userId      Int
+  description String
+  amount      Decimal
+  type        TransactionType
+  categoryId  Int
+  frequency   RecurrencyFreq
+  startDate   DateTime
+  endDate     DateTime?
+  nextDueDate DateTime
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([userId, isActive, nextDueDate])
+}
+
+enum RecurrencyFreq {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+model Loan {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  name              String
+  principalAmount   Decimal
+  currentBalance    Decimal
+  interestRate      Decimal   // % ao mês
+  startDate         DateTime
+  dueDayOfMonth     Int       // 1-28
+  installments      Int?      // null = indefinido
+  installmentAmount Decimal?  // calculado ou informado
+  totalPaid         Decimal   @default(0)
+  isActive          Boolean   @default(true)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments LoanPayment[]
+
+  @@index([userId, isActive])
+}
+
+model LoanPayment {
+  id              Int         @id @default(autoincrement())
+  loanId          Int
+  date            DateTime
+  type            LoanPaymentType
+  amount          Decimal
+  interestAmount  Decimal
+  principalAmount Decimal
+  balanceBefore   Decimal
+  balanceAfter    Decimal
+  createdAt       DateTime    @default(now())
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+}
+
+enum LoanPaymentType {
+  FULL
+  INTEREST_ONLY
+}
+
+model Tag {
+  id           Int              @id @default(autoincrement())
+  userId       Int
+  name         String
+  color        String           @default("#6b7280")
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions TransactionTag[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model TransactionTag {
+  transactionId Int
+  tagId         Int
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  tag           Tag         @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tagId])
+}
+
+model PushSubscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AppNotification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  title     String
+  body      String
+  type      NotificationType
+  link      String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
+}
+
+enum NotificationType {
+  BUDGET_ALERT
+  GOAL_REACHED
+  LOAN_DUE
+  SYSTEM
+}
+
+model SavingsGoal {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  name          String
+  targetAmount  Decimal
+  currentAmount Decimal   @default(0)
+  deadline      DateTime?
+  color         String?
+  icon          String?
+  isCompleted   Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

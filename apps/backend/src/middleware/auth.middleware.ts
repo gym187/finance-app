@@ -7,17 +7,16 @@ export interface AuthenticatedRequest extends Request {
   userId?: number;
 }
 
-/**
- * Middleware that verifies the JWT access token present in the Authorization header.
- * Sets req.userId on success.
- */
 export const authenticate = (
   req: AuthenticatedRequest,
   _res: Response,
   next: NextFunction
 ): void => {
+  // Prefer httpOnly cookie; fall back to Bearer header for API/bot clients
+  const cookieToken = req.cookies?.access_token as string | undefined;
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : undefined;
+  const token = cookieToken ?? bearerToken ?? null;
 
   if (!token) {
     throw new AppError(401, 'Token de acesso não fornecido');

@@ -12,6 +12,10 @@ import {
   TrendingUp,
   LogOut,
   Send,
+  LineChart,
+  Repeat2,
+  Wallet,
+  CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,8 +24,12 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/transactions', label: 'Transações', icon: ArrowLeftRight },
+  { href: '/recurring', label: 'Recorrentes', icon: Repeat2 },
+  { href: '/investments', label: 'Investimentos', icon: LineChart },
+  { href: '/goals', label: 'Metas', icon: Target },
+  { href: '/loans', label: 'Empréstimos', icon: CreditCard },
   { href: '/categories', label: 'Categorias', icon: FolderOpen },
-  { href: '/budgets', label: 'Orçamentos', icon: Target },
+  { href: '/budgets', label: 'Orçamentos', icon: Wallet },
   { href: '/reports', label: 'Relatórios', icon: BarChart3 },
 ];
 

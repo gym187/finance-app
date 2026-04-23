@@ -43,3 +43,9 @@ docker-compose.override.yml
 
 # Husky
 .husky/_
+
+# Claude Code
+.claude/
+
+# TypeScript build info
+*.tsbuildinfo

@@ -133,6 +133,80 @@ export const dashboardService = {
       }
     }
 
+    // ─── Recurring summary for current month ────────────────────────────────
+    const activeRecurring = await prisma.recurringTransaction.findMany({
+      where: { userId, isActive: true },
+      include: { category: true },
+    });
+
+    const recurringIncome = activeRecurring
+      .filter((r) => r.type === 'INCOME')
+      .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
+
+    const recurringExpense = activeRecurring
+      .filter((r) => r.type === 'EXPENSE')
+      .reduce((s, r) => s + Math.abs(Number(r.amount)), 0);
+
+    const recurringItems = activeRecurring.map((r) => ({
+      id: r.id,
+      description: r.description,
+      amount: Math.abs(Number(r.amount)),
+      type: r.type,
+      frequency: r.frequency,
+      nextDueDate: r.nextDueDate.toISOString(),
+      categoryName: r.category.name,
+      categoryColor: r.category.color ?? '#6b7280',
+    }));
+
+    // ─── Loans summary ───────────────────────────────────────────────────────
+    const activeLoans = await prisma.loan.findMany({
+      where: { userId, isActive: true },
+      orderBy: { createdAt: 'asc' },
+      take: 3,
+    });
+
+    const loansWidget = activeLoans.map((l) => {
+      const balance = Number(l.currentBalance);
+      const rate = Number(l.interestRate) / 100;
+      const interest = balance * rate;
+      const installment = l.installmentAmount ? Number(l.installmentAmount) : balance + interest;
+
+      // next due date
+      const nowD = new Date();
+      let due = new Date(nowD.getFullYear(), nowD.getMonth(), l.dueDayOfMonth);
+      if (due <= nowD) due = new Date(nowD.getFullYear(), nowD.getMonth() + 1, l.dueDayOfMonth);
+
+      return {
+        id: l.id,
+        name: l.name,
+        currentBalance: balance,
+        installmentAmount: installment,
+        nextDueDate: due.toISOString(),
+      };
+    });
+
+    const totalDebt = activeLoans.reduce((s, l) => s + Number(l.currentBalance), 0);
+
+    // ─── Savings goals summary ────────────────────────────────────────────────
+    const savingsGoals = await prisma.savingsGoal.findMany({
+      where: { userId, isCompleted: false },
+      orderBy: { deadline: 'asc' },
+      take: 3,
+    });
+
+    const goalsWidget = savingsGoals.map((g) => ({
+      id: g.id,
+      name: g.name,
+      targetAmount: Number(g.targetAmount),
+      currentAmount: Number(g.currentAmount),
+      deadline: g.deadline?.toISOString() ?? null,
+      color: g.color ?? '#3b82f6',
+      icon: g.icon ?? null,
+      percent: Number(g.targetAmount) > 0
+        ? Math.min(100, (Number(g.currentAmount) / Number(g.targetAmount)) * 100)
+        : 0,
+    }));
+
     return {
       balance,
       totalIncome,
@@ -145,6 +219,12 @@ export const dashboardService = {
       categoryData,
       budgetSummary,
       alerts,
+      recurringIncome,
+      recurringExpense,
+      recurringItems,
+      goalsWidget,
+      loansWidget,
+      totalDebt,
     };
   },
 };

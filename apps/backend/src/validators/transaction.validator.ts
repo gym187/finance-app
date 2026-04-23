@@ -5,9 +5,9 @@ export const createTransactionSchema = z.object({
   amount: z.number().positive('Valor deve ser positivo'),
   type: z.enum(['INCOME', 'EXPENSE']),
   categoryId: z.number().int().positive('Categoria inválida'),
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/, 'Data inválida'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/, 'Data inválida'),
+  currency: z.enum(['BRL', 'USD', 'EUR', 'GBP', 'BTC']).default('BRL'),
+  tagIds: z.array(z.number().int().positive()).optional(),
 });
 
 export const updateTransactionSchema = createTransactionSchema.partial();
@@ -26,10 +26,15 @@ export const transactionQuerySchema = z.object({
     .string()
     .optional()
     .transform((v) => (v ? parseInt(v, 10) : undefined)),
+  tagId: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseInt(v, 10) : undefined)),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   search: z.string().optional(),
 });
 
-export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
-export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
+// z.input preserves optionality of fields with .default() — currency can be omitted
+export type CreateTransactionInput = z.input<typeof createTransactionSchema>;
+export type UpdateTransactionInput = z.input<typeof updateTransactionSchema>;

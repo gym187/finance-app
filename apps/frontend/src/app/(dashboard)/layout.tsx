@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Sidebar, MobileSidebarProvider } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
+import { InstallBanner } from '@/components/pwa/InstallBanner';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -33,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">{children}</main>
         </div>
       </div>
+      <InstallBanner />
     </MobileSidebarProvider>
   );
 }

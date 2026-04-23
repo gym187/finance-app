@@ -1,8 +1,8 @@
 'use client';
 
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -13,6 +13,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBRL, formatMonthLabel } from '@/lib/formatters';
+import { TOOLTIP_STYLE } from '@/lib/chartUtils';
 import type { MonthlyData } from '@finance-app/shared';
 
 interface MonthlyChartProps {
@@ -27,12 +28,12 @@ const TooltipContent = ({ active, payload, label }: {
 }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border bg-card px-3 py-2 shadow-lg">
-      <p className="mb-2 text-xs font-medium text-muted-foreground">{label}</p>
+    <div style={TOOLTIP_STYLE} className="px-3 py-2">
+      <p className="mb-2 text-xs font-medium opacity-70">{label}</p>
       {payload.map((p) => (
         <div key={p.name} className="flex items-center gap-2 text-sm">
           <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
-          <span className="text-muted-foreground">{p.name}:</span>
+          <span className="opacity-70">{p.name}:</span>
           <span className="font-semibold">{formatBRL(p.value)}</span>
         </div>
       ))}
@@ -49,20 +50,30 @@ export function MonthlyChart({ data, isLoading }: MonthlyChartProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Evolução Mensal</CardTitle>
+        <CardTitle className="text-base">Evolução Mensal (12 meses)</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <Skeleton className="h-64 w-full" />
         ) : (
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+            <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <defs>
+                <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="expenseGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="balanceGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis
-                dataKey="month"
-                tick={{ fontSize: 11 }}
-                className="fill-muted-foreground"
-              />
+              <XAxis dataKey="month" tick={{ fontSize: 11 }} className="fill-muted-foreground" />
               <YAxis
                 tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
                 tick={{ fontSize: 11 }}
@@ -70,34 +81,37 @@ export function MonthlyChart({ data, isLoading }: MonthlyChartProps) {
               />
               <Tooltip content={<TooltipContent />} />
               <Legend />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="income"
                 name="Entradas"
                 stroke="#22c55e"
                 strokeWidth={2}
+                fill="url(#incomeGrad)"
                 dot={{ r: 3 }}
                 activeDot={{ r: 5 }}
               />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="expense"
                 name="Saídas"
                 stroke="#ef4444"
                 strokeWidth={2}
+                fill="url(#expenseGrad)"
                 dot={{ r: 3 }}
                 activeDot={{ r: 5 }}
               />
-              <Line
+              <Area
                 type="monotone"
                 dataKey="balance"
                 name="Saldo"
                 stroke="#3b82f6"
                 strokeWidth={2}
+                fill="url(#balanceGrad)"
                 strokeDasharray="5 5"
                 dot={{ r: 3 }}
               />
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         )}
       </CardContent>

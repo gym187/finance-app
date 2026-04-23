@@ -20,6 +20,8 @@ export interface Category {
   userId: number;
 }
 
+export type Currency = 'BRL' | 'USD' | 'EUR' | 'GBP' | 'BTC';
+
 export interface Transaction {
   id: number;
   userId: number;
@@ -29,6 +31,9 @@ export interface Transaction {
   categoryId: number;
   category?: Category;
   date: string;
+  currency: Currency;
+  amountOriginal: number | null;
+  exchangeRate: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,6 +49,17 @@ export interface Budget {
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
+export interface DashboardGoalItem {
+  id: number;
+  name: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline: string | null;
+  color: string;
+  icon: string | null;
+  percent: number;
+}
+
 export interface DashboardData {
   balance: number;
   totalIncome: number;
@@ -56,6 +72,20 @@ export interface DashboardData {
   categoryData: CategoryData[];
   budgetSummary: BudgetSummary[];
   alerts: Alert[];
+  recurringIncome?: number;
+  recurringExpense?: number;
+  recurringItems?: unknown[];
+  goalsWidget?: DashboardGoalItem[];
+  loansWidget?: DashboardLoanItem[];
+  totalDebt?: number;
+}
+
+export interface DashboardLoanItem {
+  id: number;
+  name: string;
+  currentBalance: number;
+  installmentAmount: number;
+  nextDueDate: string;
 }
 
 export interface MonthlyData {

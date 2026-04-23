@@ -3,6 +3,7 @@
 import { QueryProvider } from './QueryProvider';
 import { AuthProvider } from './AuthProvider';
 import { ThemeProviderWrapper } from './ThemeProvider';
+import { PWAProvider } from './PWAProvider';
 import { Toaster } from 'sonner';
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -10,8 +11,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeProviderWrapper>
       <QueryProvider>
         <AuthProvider>
-          {children}
-          <Toaster richColors position="top-right" />
+          <PWAProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+          </PWAProvider>
         </AuthProvider>
       </QueryProvider>
     </ThemeProviderWrapper>

@@ -1,88 +1,95 @@
 'use client';
 
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatBRL } from '@/lib/formatters';
+import { formatBRL, formatPercent } from '@/lib/formatters';
 import type { CategoryData } from '@finance-app/shared';
+
+function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number; payload: { color: string } }[] }) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  return (
+    <div className="rounded-lg border bg-popover px-3 py-2 shadow-lg text-popover-foreground text-sm">
+      <div className="flex items-center gap-2">
+        <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.payload.color }} />
+        <span className="font-medium">{item.name}</span>
+      </div>
+      <p className="mt-0.5 font-semibold">{formatBRL(item.value)}</p>
+    </div>
+  );
+}
 
 interface CategoryPieChartProps {
   data?: CategoryData[];
   isLoading?: boolean;
 }
 
-const RADIAN = Math.PI / 180;
-const renderCustomLabel = ({
-  cx, cy, midAngle, innerRadius, outerRadius, percent,
-}: {
-  cx: number; cy: number; midAngle: number; innerRadius: number;
-  outerRadius: number; percent: number;
-}) => {
-  if (percent < 0.05) return null;
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-  const x = cx + radius * Math.cos(-midAngle * RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * RADIAN);
-  return (
-    <text
-      x={x} y={y}
-      fill="white"
-      textAnchor="middle"
-      dominantBaseline="central"
-      fontSize={11}
-      fontWeight={600}
-    >
-      {`${(percent * 100).toFixed(0)}%`}
-    </text>
-  );
-};
-
 export function CategoryPieChart({ data, isLoading }: CategoryPieChartProps) {
   const hasData = data && data.length > 0;
+  const total = data?.reduce((s, d) => s + d.value, 0) ?? 0;
 
   return (
-    <Card>
+    <Card className="flex flex-col">
       <CardHeader>
         <CardTitle className="text-base">Gastos por Categoria</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
         {isLoading ? (
-          <Skeleton className="mx-auto h-64 w-64 rounded-full" />
+          <>
+            <Skeleton className="mx-auto h-44 w-44 rounded-full" />
+            <div className="space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-4 w-full" />
+              ))}
+            </div>
+          </>
         ) : !hasData ? (
-          <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">
             Nenhum gasto registrado este mês
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie
-                data={data}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={renderCustomLabel}
-                outerRadius={100}
-                dataKey="value"
-              >
-                {data?.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value: number) => [formatBRL(value), '']}
-                contentStyle={{
-                  borderRadius: '8px',
-                  border: '1px solid hsl(var(--border))',
-                  background: 'hsl(var(--card))',
-                  color: 'hsl(var(--foreground))',
-                }}
-              />
-              <Legend
-                formatter={(value) => (
-                  <span className="text-xs text-foreground">{value}</span>
-                )}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          <>
+            {/* Donut chart */}
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={52}
+                  outerRadius={80}
+                  paddingAngle={2}
+                  dataKey="value"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<PieTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+
+            {/* Category list */}
+            <div className="space-y-2">
+              {data.slice(0, 6).map((cat) => (
+                <div key={cat.name} className="flex items-center gap-2 text-sm">
+                  <span
+                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    style={{ backgroundColor: cat.color }}
+                  />
+                  <span className="flex-1 truncate text-muted-foreground">{cat.name}</span>
+                  <span className="font-medium">{formatBRL(cat.value)}</span>
+                  <span className="w-10 text-right text-xs text-muted-foreground">
+                    {total > 0 ? formatPercent((cat.value / total) * 100, 0) : '0%'}
+                  </span>
+                </div>
+              ))}
+              {data.length > 6 && (
+                <p className="text-xs text-muted-foreground">+{data.length - 6} categorias</p>
+              )}
+            </div>
+          </>
         )}
       </CardContent>
     </Card>

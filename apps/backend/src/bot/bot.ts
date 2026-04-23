@@ -492,7 +492,9 @@ export function startBot(app: Express) {
     console.log(`🤖 Bot em modo webhook: ${env.WEBHOOK_URL}${webhookPath}`);
   } else {
     // Long polling for development
-    bot.launch({ dropPendingUpdates: true });
+    bot.launch({ dropPendingUpdates: true }).catch((err) => {
+      console.error('❌ Falha ao iniciar bot Telegram:', err.message);
+    });
     console.log('🤖 Bot em modo polling (desenvolvimento)');
   }
 

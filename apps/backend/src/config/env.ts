@@ -15,6 +15,14 @@ const envSchema = z.object({
   ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   WEBHOOK_URL: z.string().url().optional().or(z.literal('')),
+  // Email
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default('AppFin <noreply@appfin.dev>'),
+  FRONTEND_URL: z.string().default('http://localhost:3000'),
+  // Web Push (VAPID)
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_EMAIL: z.string().default('admin@appfin.dev'),
 });
 
 const _env = envSchema.safeParse(process.env);
