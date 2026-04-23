@@ -121,11 +121,31 @@ export const loanService = {
 
     const isCompleted = newBalance <= 0.01;
 
+    // Busca categoria "Empréstimos" ou "Outros" do usuário para registrar a transação
+    const category = await prisma.category.findFirst({
+      where: {
+        userId,
+        OR: [{ name: 'Empréstimos' }, { name: 'Outros' }],
+      },
+      orderBy: { name: 'asc' }, // "Empréstimos" vem antes de "Outros" alfabeticamente
+    });
+    const categoryId = category?.id ?? (
+      await prisma.category.findFirst({ where: { userId } })
+    )?.id;
+
+    if (!categoryId) return null;
+
+    const now = new Date();
+    const description =
+      type === 'FULL'
+        ? `Pagamento parcela — ${loan.name}`
+        : `Pagamento juros — ${loan.name}`;
+
     const [payment] = await prisma.$transaction([
       prisma.loanPayment.create({
         data: {
           loanId: id,
-          date: new Date(),
+          date: now,
           type,
           amount: paymentAmount,
           interestAmount,
@@ -140,6 +160,16 @@ export const loanService = {
           currentBalance: newBalance,
           totalPaid: Number(loan.totalPaid) + paymentAmount,
           isActive: !isCompleted,
+        },
+      }),
+      prisma.transaction.create({
+        data: {
+          userId,
+          categoryId,
+          description,
+          amount: -paymentAmount,
+          type: 'EXPENSE',
+          date: now,
         },
       }),
     ]);
