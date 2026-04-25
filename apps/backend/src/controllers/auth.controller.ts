@@ -22,7 +22,12 @@ const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
 const COOKIE_SECURE = env.COOKIE_SECURE === 'true';
 
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
-  const base = { secure: COOKIE_SECURE, sameSite: 'lax' as const, path: '/' };
+  const base = {
+    secure: COOKIE_SECURE,
+    sameSite: 'lax' as const,
+    path: '/',
+    ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}),
+  };
 
   res.cookie('access_token', accessToken, { ...base, httpOnly: true, maxAge: ACCESS_TOKEN_TTL });
   res.cookie('refresh_token', refreshToken, { ...base, httpOnly: true, maxAge: REFRESH_TOKEN_TTL });

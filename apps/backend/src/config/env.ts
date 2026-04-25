@@ -14,6 +14,7 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   ALLOWED_ORIGINS: z.string().default('http://localhost:3000'),
   COOKIE_SECURE: z.string().default('false'),
+  COOKIE_DOMAIN: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   WEBHOOK_URL: z.string().url().optional().or(z.literal('')),
   // Email
