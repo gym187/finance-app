@@ -49,9 +49,54 @@ function calcCompoundInterest(
 }
 
 function formatYAxis(value: number): string {
-  if (value >= 1_000_000) return `R$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `R$${(value / 1_000).toFixed(0)}k`;
-  return `R$${value.toFixed(0)}`;
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(0)}k`;
+  return String(value);
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  valueClass?: string;
+}
+
+function StatCard({ label, value, valueClass = '' }: StatCardProps) {
+  return (
+    <Card className="min-w-0">
+      <CardContent className="p-4 sm:p-6">
+        <p className="text-[10px] uppercase tracking-wide text-muted-foreground sm:text-xs">{label}</p>
+        <p className={`mt-1 truncate text-base font-bold sm:text-xl ${valueClass}`}>{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface FieldProps {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  step?: string;
+  min?: string;
+  max?: string;
+}
+
+function Field({ label, value, onChange, placeholder, step, min, max }: FieldProps) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium">{label}</label>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
 }
 
 export default function CalculadoraPage() {
@@ -73,7 +118,7 @@ export default function CalculadoraPage() {
   const returnPct = totalInvested > 0 ? (totalInterest / totalInvested) * 100 : 0;
 
   return (
-    <div className="space-y-5 p-4 sm:p-6">
+    <div className="space-y-4 sm:space-y-5">
       <div>
         <h2 className="text-xl font-semibold sm:text-2xl">Calculadora de Juros Compostos</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -81,132 +126,127 @@ export default function CalculadoraPage() {
         </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/* Inputs + resultado lado a lado no lg, empilhados no mobile */}
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3 sm:pb-6">
             <CardTitle className="text-base">Parâmetros</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Investimento inicial (R$)</label>
-              <Input
-                type="number"
-                min="0"
+          <CardContent className="space-y-3 sm:space-y-4">
+            {/* No mobile: 2 inputs por linha para economizar espaço vertical */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <Field
+                label="Investimento inicial (R$)"
                 value={principal}
-                onChange={(e) => setPrincipal(e.target.value)}
+                onChange={setPrincipal}
                 placeholder="10000"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Aporte mensal (R$)</label>
-              <Input
-                type="number"
                 min="0"
-                value={monthlyContrib}
-                onChange={(e) => setMonthlyContrib(e.target.value)}
-                placeholder="500"
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Taxa de juros anual (%)</label>
-              <Input
-                type="number"
+              <Field
+                label="Aporte mensal (R$)"
+                value={monthlyContrib}
+                onChange={setMonthlyContrib}
+                placeholder="500"
+                min="0"
+              />
+              <Field
+                label="Taxa de juros anual (%)"
+                value={annualRate}
+                onChange={setAnnualRate}
+                placeholder="12"
                 min="0"
                 step="0.1"
-                value={annualRate}
-                onChange={(e) => setAnnualRate(e.target.value)}
-                placeholder="12"
               />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Período (anos, máx. 50)</label>
-              <Input
-                type="number"
+              <Field
+                label="Período (anos, máx. 50)"
+                value={years}
+                onChange={setYears}
+                placeholder="10"
                 min="1"
                 max="50"
-                value={years}
-                onChange={(e) => setYears(e.target.value)}
-                placeholder="10"
               />
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-2 gap-4 content-start">
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Montante Final</p>
-              <p className="mt-1 text-2xl font-bold text-primary">{formatBRL(finalBalance)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Investido</p>
-              <p className="mt-1 text-2xl font-bold">{formatBRL(totalInvested)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Juros Acumulados</p>
-              <p className="mt-1 text-2xl font-bold text-green-500">{formatBRL(totalInterest)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Rendimento</p>
-              <p className="mt-1 text-2xl font-bold text-green-500">{formatPercent(returnPct)}</p>
-            </CardContent>
-          </Card>
+        {/* Cards de resultado */}
+        <div className="grid grid-cols-2 gap-3 content-start sm:gap-4">
+          <StatCard label="Montante Final" value={formatBRL(finalBalance)} valueClass="text-primary" />
+          <StatCard label="Total Investido" value={formatBRL(totalInvested)} />
+          <StatCard label="Juros Acumulados" value={formatBRL(totalInterest)} valueClass="text-green-500" />
+          <StatCard label="Rendimento" value={formatPercent(returnPct)} valueClass="text-green-500" />
         </div>
       </div>
 
+      {/* Gráfico */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Evolução Patrimonial</CardTitle>
         </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={320}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorInvestido" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="colorJuros" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
-              <YAxis tickFormatter={formatYAxis} tick={{ fontSize: 12 }} width={70} />
-              <Tooltip
-                formatter={(value: number, name: string) => [
-                  formatBRL(value),
-                  name === 'investido' ? 'Total Investido' : 'Juros',
-                ]}
-              />
-              <Legend
-                formatter={(value) => (value === 'investido' ? 'Total Investido' : 'Juros')}
-              />
-              <Area
-                type="monotone"
-                dataKey="investido"
-                stackId="1"
-                stroke="#6366f1"
-                fill="url(#colorInvestido)"
-                strokeWidth={2}
-              />
-              <Area
-                type="monotone"
-                dataKey="juros"
-                stackId="1"
-                stroke="#22c55e"
-                fill="url(#colorJuros)"
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+        <CardContent className="px-2 sm:px-6">
+          <div className="h-[220px] sm:h-[300px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 10, right: 6, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorInvestido" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorJuros" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10 }}
+                  interval="preserveStartEnd"
+                  tickLine={false}
+                />
+                <YAxis
+                  tickFormatter={formatYAxis}
+                  tick={{ fontSize: 10 }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                />
+                <Tooltip
+                  formatter={(value: number, name: string) => [
+                    formatBRL(value),
+                    name === 'investido' ? 'Total Investido' : 'Juros',
+                  ]}
+                />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(value) => (
+                    <span className="text-xs">{value === 'investido' ? 'Total Investido' : 'Juros'}</span>
+                  )}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="investido"
+                  stackId="1"
+                  stroke="#6366f1"
+                  fill="url(#colorInvestido)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="juros"
+                  stackId="1"
+                  stroke="#22c55e"
+                  fill="url(#colorJuros)"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </CardContent>
       </Card>
     </div>

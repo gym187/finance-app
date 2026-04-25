@@ -39,9 +39,9 @@ function StatCard({ title, value, isBRL, isPercent, trend, icon, iconBg, isLoadi
     <Card className="animate-fade-in">
       <CardContent className="p-4 sm:p-6">
         <div className="flex items-center justify-between">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="mt-1 text-2xl font-bold">{displayValue}</p>
+            <p className="mt-1 truncate text-xl font-bold sm:text-2xl">{displayValue}</p>
             {trend !== undefined && (
               <div className="mt-1 flex items-center gap-1 text-xs">
                 {trend >= 0 ? (
