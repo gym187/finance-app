@@ -3,14 +3,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
+export type LoanType = 'LOAN' | 'CREDIT_CARD' | 'BOLETO';
+
 export interface Loan {
   id: number;
+  type: LoanType;
   name: string;
   principalAmount: number;
   currentBalance: number;
   interestRate: number;
   startDate: string;
   dueDayOfMonth: number;
+  dueDate: string | null;
+  closingDay: number | null;
   installments: number | null;
   installmentAmount: number | null;
   totalPaid: number;

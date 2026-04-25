@@ -160,11 +160,14 @@ model Loan {
   id                Int       @id @default(autoincrement())
   userId            Int
   name              String
+  type              LoanType  @default(LOAN)
   principalAmount   Decimal
   currentBalance    Decimal
-  interestRate      Decimal   // % ao mês
-  startDate         DateTime
-  dueDayOfMonth     Int       // 1-28
+  interestRate      Decimal   @default(0) // % ao mês
+  startDate         DateTime  @default(now())
+  dueDayOfMonth     Int       @default(1) // 1-28; para boleto = dia do dueDate
+  dueDate           DateTime? // data exata de vencimento (boletos)
+  closingDay        Int?      // dia de fechamento da fatura (cartão)
   installments      Int?      // null = indefinido
   installmentAmount Decimal?  // calculado ou informado
   totalPaid         Decimal   @default(0)
@@ -177,6 +180,7 @@ model Loan {
   payments LoanPayment[]
 
   @@index([userId, isActive])
+  @@index([userId, type])
 }
 
 model LoanPayment {
@@ -199,6 +203,12 @@ model LoanPayment {
 enum LoanPaymentType {
   FULL
   INTEREST_ONLY
+}
+
+enum LoanType {
+  LOAN
+  CREDIT_CARD
+  BOLETO
 }
 
 model Tag {

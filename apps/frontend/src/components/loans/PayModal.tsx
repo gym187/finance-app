@@ -17,6 +17,53 @@ export function PayModal({ open, onClose, onSubmit, loan, isLoading }: Props) {
   if (!loan) return null;
 
   const balance = loan.currentBalance;
+
+  // ── BOLETO: pagamento simples ──────────────────────────────────────────────
+  if (loan.type === 'BOLETO') {
+    return (
+      <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Pagar Boleto — {loan.name}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Valor do boleto</span>
+                <span className="font-semibold">{formatBRL(balance)}</span>
+              </div>
+              {loan.dueDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Vencimento</span>
+                  <span className="font-semibold">
+                    {new Date(loan.dueDate).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => onSubmit('FULL')}
+              disabled={isLoading}
+              className="w-full flex flex-col rounded-lg border-2 border-primary bg-primary/5 p-4 text-left transition hover:bg-primary/10 disabled:opacity-50"
+            >
+              <span className="font-semibold text-primary">Confirmar Pagamento</span>
+              <span className="mt-0.5 text-sm text-muted-foreground">
+                Registra saída de <strong className="text-foreground">{formatBRL(balance)}</strong> e marca como pago
+              </span>
+            </button>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={isLoading}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── LOAN / CREDIT_CARD: amortização ───────────────────────────────────────
   const rate = loan.interestRate / 100;
   const interest = balance * rate;
   const installment = loan.installmentAmount ?? (balance + interest);
@@ -41,14 +88,13 @@ export function PayModal({ open, onClose, onSubmit, loan, isLoading }: Props) {
             </div>
             {loan.installmentAmount && (
               <div className="flex justify-between border-t pt-1">
-                <span className="text-muted-foreground">Parcela Price</span>
+                <span className="text-muted-foreground">Parcela</span>
                 <span className="font-semibold text-primary">{formatBRL(installment)}</span>
               </div>
             )}
           </div>
 
           <div className="grid gap-3">
-            {/* Full payment */}
             <button
               onClick={() => onSubmit('FULL')}
               disabled={isLoading}
@@ -64,7 +110,6 @@ export function PayModal({ open, onClose, onSubmit, loan, isLoading }: Props) {
               </span>
             </button>
 
-            {/* Interest only */}
             <button
               onClick={() => onSubmit('INTEREST_ONLY')}
               disabled={isLoading}

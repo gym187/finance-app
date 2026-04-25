@@ -1,7 +1,7 @@
-import { addMonths, setDate, startOfDay, isBefore, isAfter } from 'date-fns';
+import { addMonths, setDate, startOfDay, isAfter } from 'date-fns';
 import { prisma } from '../config/prisma';
+import { CreateLoanInput, UpdateLoanInput } from '../validators/loan.validator';
 
-// Price (French amortization) installment: M = PV * [i*(1+i)^n] / [(1+i)^n - 1]
 function calcInstallment(principal: number, monthlyRate: number, n: number): number {
   if (monthlyRate === 0) return principal / n;
   const r = monthlyRate / 100;
@@ -20,6 +20,15 @@ function nextDueDate(startDate: Date, dueDayOfMonth: number): Date {
   return candidate;
 }
 
+async function findCategory(userId: number, names: string[]) {
+  for (const name of names) {
+    const cat = await prisma.category.findFirst({ where: { userId, name } });
+    if (cat) return cat.id;
+  }
+  const fallback = await prisma.category.findFirst({ where: { userId } });
+  return fallback?.id ?? null;
+}
+
 export const loanService = {
   async list(userId: number) {
     return prisma.loan.findMany({
@@ -32,27 +41,69 @@ export const loanService = {
     return prisma.loan.findFirst({ where: { id, userId } });
   },
 
-  async create(userId: number, data: {
-    name: string;
-    principalAmount: number;
-    interestRate: number;
-    startDate: string;
-    dueDayOfMonth: number;
-    installments?: number;
-    notes?: string;
-  }) {
+  async create(userId: number, data: CreateLoanInput) {
+    const type = data.type ?? 'LOAN';
+
+    if (type === 'BOLETO') {
+      if (!data.dueDate) throw new Error('dueDate obrigatório para boleto');
+      const due = new Date(data.dueDate);
+      return prisma.loan.create({
+        data: {
+          userId,
+          type: 'BOLETO',
+          name: data.name,
+          principalAmount: data.principalAmount,
+          currentBalance: data.principalAmount,
+          interestRate: 0,
+          startDate: new Date(),
+          dueDayOfMonth: due.getDate(),
+          dueDate: due,
+          notes: data.notes ?? null,
+        },
+      });
+    }
+
+    if (type === 'CREDIT_CARD') {
+      const interestRate = data.interestRate ?? 0;
+      const installmentAmount =
+        data.installments && data.installments > 0
+          ? calcInstallment(data.principalAmount, interestRate, data.installments)
+          : null;
+      return prisma.loan.create({
+        data: {
+          userId,
+          type: 'CREDIT_CARD',
+          name: data.name,
+          principalAmount: data.principalAmount,
+          currentBalance: data.principalAmount,
+          interestRate,
+          startDate: data.startDate ? new Date(data.startDate) : new Date(),
+          dueDayOfMonth: data.dueDayOfMonth ?? 10,
+          closingDay: data.closingDay ?? null,
+          installments: data.installments ?? null,
+          installmentAmount,
+          notes: data.notes ?? null,
+        },
+      });
+    }
+
+    // LOAN (default)
+    if (!data.startDate) throw new Error('startDate obrigatório para empréstimo');
+    if (!data.dueDayOfMonth) throw new Error('dueDayOfMonth obrigatório para empréstimo');
+    const interestRate = data.interestRate ?? 0;
     const installmentAmount =
       data.installments && data.installments > 0
-        ? calcInstallment(data.principalAmount, data.interestRate, data.installments)
+        ? calcInstallment(data.principalAmount, interestRate, data.installments)
         : null;
 
     return prisma.loan.create({
       data: {
         userId,
+        type: 'LOAN',
         name: data.name,
         principalAmount: data.principalAmount,
         currentBalance: data.principalAmount,
-        interestRate: data.interestRate,
+        interestRate,
         startDate: new Date(data.startDate),
         dueDayOfMonth: data.dueDayOfMonth,
         installments: data.installments ?? null,
@@ -62,18 +113,10 @@ export const loanService = {
     });
   },
 
-  async update(userId: number, id: number, data: Partial<{
-    name: string;
-    interestRate: number;
-    dueDayOfMonth: number;
-    installments: number | null;
-    notes: string;
-    isActive: boolean;
-  }>) {
+  async update(userId: number, id: number, data: UpdateLoanInput) {
     const existing = await prisma.loan.findFirst({ where: { id, userId } });
     if (!existing) return null;
 
-    // Recalculate installment if rate or installments changed
     let installmentAmount = existing.installmentAmount ? Number(existing.installmentAmount) : null;
     const rate = data.interestRate ?? Number(existing.interestRate);
     const n = data.installments !== undefined ? data.installments : (existing.installments ?? null);
@@ -87,6 +130,8 @@ export const loanService = {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.interestRate !== undefined && { interestRate: data.interestRate }),
         ...(data.dueDayOfMonth !== undefined && { dueDayOfMonth: data.dueDayOfMonth }),
+        ...(data.closingDay !== undefined && { closingDay: data.closingDay }),
+        ...(data.dueDate !== undefined && { dueDate: new Date(data.dueDate) }),
         ...(data.installments !== undefined && { installments: data.installments }),
         ...(installmentAmount !== null && { installmentAmount }),
         ...(data.notes !== undefined && { notes: data.notes }),
@@ -95,11 +140,50 @@ export const loanService = {
     });
   },
 
-  async pay(userId: number, id: number, type: 'FULL' | 'INTEREST_ONLY') {
+  async pay(userId: number, id: number, payType: 'FULL' | 'INTEREST_ONLY') {
     const loan = await prisma.loan.findFirst({ where: { id, userId, isActive: true } });
     if (!loan) return null;
 
     const balance = Number(loan.currentBalance);
+    const now = new Date();
+
+    // ── BOLETO: pagamento simples, sem amortização ──────────────────────────
+    if (loan.type === 'BOLETO') {
+      const categoryId = await findCategory(userId, ['Contas', 'Outros']);
+      if (!categoryId) return null;
+
+      const [payment] = await prisma.$transaction([
+        prisma.loanPayment.create({
+          data: {
+            loanId: id,
+            date: now,
+            type: 'FULL',
+            amount: balance,
+            interestAmount: 0,
+            principalAmount: balance,
+            balanceBefore: balance,
+            balanceAfter: 0,
+          },
+        }),
+        prisma.loan.update({
+          where: { id },
+          data: { currentBalance: 0, totalPaid: Number(loan.totalPaid) + balance, isActive: false },
+        }),
+        prisma.transaction.create({
+          data: {
+            userId,
+            categoryId,
+            description: `Pagamento boleto — ${loan.name}`,
+            amount: -balance,
+            type: 'EXPENSE',
+            date: now,
+          },
+        }),
+      ]);
+      return payment;
+    }
+
+    // ── LOAN / CREDIT_CARD: amortização Price ──────────────────────────────
     const monthlyRate = Number(loan.interestRate) / 100;
     const interestAmount = balance * monthlyRate;
 
@@ -107,37 +191,27 @@ export const loanService = {
     let principalPaid: number;
     let newBalance: number;
 
-    if (type === 'INTEREST_ONLY') {
+    if (payType === 'INTEREST_ONLY') {
       paymentAmount = interestAmount;
       principalPaid = 0;
-      newBalance = balance; // balance doesn't decrease
+      newBalance = balance;
     } else {
-      // FULL: use installment amount if set, else pay off balance + interest
-      const installment = loan.installmentAmount ? Number(loan.installmentAmount) : balance + interestAmount;
+      const installment = loan.installmentAmount
+        ? Number(loan.installmentAmount)
+        : balance + interestAmount;
       paymentAmount = Math.min(installment, balance + interestAmount);
       principalPaid = paymentAmount - interestAmount;
       newBalance = Math.max(0, balance - principalPaid);
     }
 
     const isCompleted = newBalance <= 0.01;
-
-    // Busca categoria "Empréstimos" ou "Outros" do usuário para registrar a transação
-    const category = await prisma.category.findFirst({
-      where: {
-        userId,
-        OR: [{ name: 'Empréstimos' }, { name: 'Outros' }],
-      },
-      orderBy: { name: 'asc' }, // "Empréstimos" vem antes de "Outros" alfabeticamente
-    });
-    const categoryId = category?.id ?? (
-      await prisma.category.findFirst({ where: { userId } })
-    )?.id;
-
+    const categoryNames =
+      loan.type === 'CREDIT_CARD' ? ['Cartão de Crédito', 'Outros'] : ['Empréstimos', 'Outros'];
+    const categoryId = await findCategory(userId, categoryNames);
     if (!categoryId) return null;
 
-    const now = new Date();
     const description =
-      type === 'FULL'
+      payType === 'FULL'
         ? `Pagamento parcela — ${loan.name}`
         : `Pagamento juros — ${loan.name}`;
 
@@ -146,7 +220,7 @@ export const loanService = {
         data: {
           loanId: id,
           date: now,
-          type,
+          type: payType,
           amount: paymentAmount,
           interestAmount,
           principalAmount: principalPaid,
@@ -192,7 +266,7 @@ export const loanService = {
 
     const balance = Number(loan.currentBalance);
     const rate = Number(loan.interestRate) / 100;
-    const n = loan.installments ?? 120; // default 120 months if open-ended
+    const n = loan.installments ?? 120;
     const installment = loan.installmentAmount
       ? Number(loan.installmentAmount)
       : calcInstallment(balance, Number(loan.interestRate), n);
@@ -236,14 +310,20 @@ export const loanService = {
     const totalPaid = loans.reduce((s, l) => s + Number(l.totalPaid), 0);
 
     const nextDue = loans
-      .map((l) => ({
-        id: l.id,
-        name: l.name,
-        dueDate: nextDueDate(l.startDate, l.dueDayOfMonth).toISOString(),
-        installmentAmount: l.installmentAmount ? Number(l.installmentAmount) : null,
-        currentBalance: Number(l.currentBalance),
-        interestRate: Number(l.interestRate),
-      }))
+      .map((l) => {
+        const due = l.dueDate
+          ? l.dueDate.toISOString()
+          : nextDueDate(l.startDate, l.dueDayOfMonth).toISOString();
+        return {
+          id: l.id,
+          name: l.name,
+          type: l.type,
+          dueDate: due,
+          installmentAmount: l.installmentAmount ? Number(l.installmentAmount) : null,
+          currentBalance: Number(l.currentBalance),
+          interestRate: Number(l.interestRate),
+        };
+      })
       .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
 
     return { totalDebt, totalPaid, activeCount: loans.length, nextDue };
