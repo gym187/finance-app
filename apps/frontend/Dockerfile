@@ -14,6 +14,10 @@ COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared/
 COPY apps/frontend ./apps/frontend/
 
+# Inject public env at build time (Next.js bakes NEXT_PUBLIC_* into the bundle)
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
 # Build Next.js app (transpilePackages handles @finance-app/shared)
 RUN npm run build --workspace=apps/frontend
 
