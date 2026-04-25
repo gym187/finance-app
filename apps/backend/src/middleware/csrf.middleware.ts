@@ -3,13 +3,30 @@ import { AppError } from './error.middleware';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+// Auth endpoints that create/destroy sessions — never need CSRF protection
+const CSRF_EXEMPT = new Set([
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/refresh',
+  '/api/auth/logout',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/resend-verification',
+]);
+
 export const csrfProtect = (req: Request, _res: Response, next: NextFunction): void => {
   if (SAFE_METHODS.has(req.method)) {
     next();
     return;
   }
 
-  // Only enforce when session cookies are present (login/register have none yet)
+  if (CSRF_EXEMPT.has(req.path)) {
+    next();
+    return;
+  }
+
+  // Only enforce when session cookies are present
   const hasSession = !!(req.cookies?.access_token || req.cookies?.refresh_token);
   if (!hasSession) {
     next();

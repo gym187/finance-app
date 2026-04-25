@@ -40,7 +40,7 @@ function setAuthCookies(res: Response, accessToken: string, refreshToken: string
 }
 
 function clearAuthCookies(res: Response) {
-  const base = { path: '/' };
+  const base = { path: '/', ...(env.COOKIE_DOMAIN ? { domain: env.COOKIE_DOMAIN } : {}) };
   res.clearCookie('access_token', base);
   res.clearCookie('refresh_token', base);
   res.clearCookie('csrf_token', base);
