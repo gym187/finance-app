@@ -13,15 +13,16 @@ import { AuthenticatedRequest } from '../middleware/auth.middleware';
 import { env } from '../config/env';
 import { AppError } from '../middleware/error.middleware';
 
-const IS_PROD = env.NODE_ENV === 'production';
-
 // 15 min in ms
 const ACCESS_TOKEN_TTL = 15 * 60 * 1000;
 // 7 days in ms
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
 
+// secure:true exige HTTPS — desativado para deploys em HTTP (rede local)
+const COOKIE_SECURE = env.COOKIE_SECURE === 'true';
+
 function setAuthCookies(res: Response, accessToken: string, refreshToken: string) {
-  const base = { secure: IS_PROD, sameSite: 'strict' as const, path: '/' };
+  const base = { secure: COOKIE_SECURE, sameSite: 'lax' as const, path: '/' };
 
   res.cookie('access_token', accessToken, { ...base, httpOnly: true, maxAge: ACCESS_TOKEN_TTL });
   res.cookie('refresh_token', refreshToken, { ...base, httpOnly: true, maxAge: REFRESH_TOKEN_TTL });
