@@ -34,7 +34,7 @@ export function GoalsWidget({ goals, isLoading }: GoalsWidgetProps) {
             Metas de Poupança
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Link href="/goals/new" className="text-xs text-muted-foreground hover:text-primary">
+            <Link href="/goals" className="text-xs text-muted-foreground hover:text-primary">
               <Plus className="h-3.5 w-3.5" />
             </Link>
             <Link href="/goals" className="text-xs text-primary hover:underline">
