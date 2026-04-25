@@ -1,4 +1,4 @@
-const CACHE = 'appfin-v1';
+const CACHE = 'appfin-v2';
 
 const PRECACHE = [
   '/',

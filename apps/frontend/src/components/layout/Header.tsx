@@ -17,6 +17,7 @@ const pathLabels: Record<string, string> = {
   '/categories': 'Categorias',
   '/budgets': 'Orçamentos',
   '/reports': 'Relatórios',
+  '/calculadora': 'Calculadora de Juros',
 };
 
 export function Header() {
