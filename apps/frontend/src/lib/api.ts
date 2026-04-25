@@ -24,19 +24,22 @@ class ApiClient {
     });
 
     // Try to refresh token on 401
-    if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login') {
+    if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login' && path !== '/auth/profile') {
       const refreshed = await this.tryRefresh();
       if (refreshed) {
         return this.request<T>(path, options);
       }
-      // Clear session server-side and redirect
-      await fetch(`${API_URL}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'X-CSRF-Token': getCsrfToken() },
-      }).catch(() => {});
+      // Only redirect if not already on a public page (avoids infinite reload loop)
       if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+        const pub = ['/login', '/register'];
+        if (!pub.some((p) => window.location.pathname.startsWith(p))) {
+          await fetch(`${API_URL}/api/auth/logout`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+          }).catch(() => {});
+          window.location.href = '/login';
+        }
       }
       throw new Error('Sessão expirada');
     }
