@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useCategories } from '@/hooks/useCategories';
 import type { Loan, LoanType } from '@/hooks/useLoans';
 
 interface Props {
@@ -24,6 +26,7 @@ interface FormState {
   dueDate: string;
   closingDay: string;
   installments: string;
+  categoryId: string;
   notes: string;
 }
 
@@ -39,6 +42,7 @@ const empty: FormState = {
   dueDate: today,
   closingDay: '',
   installments: '',
+  categoryId: '',
   notes: '',
 };
 
@@ -50,6 +54,7 @@ const TYPE_LABELS: Record<LoanType, string> = {
 
 export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props) {
   const [form, setForm] = useState<FormState>(empty);
+  const { data: categories = [] } = useCategories();
 
   useEffect(() => {
     if (editing) {
@@ -63,6 +68,7 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
         dueDate: editing.dueDate ? editing.dueDate.split('T')[0] : today,
         closingDay: editing.closingDay?.toString() ?? '',
         installments: editing.installments?.toString() ?? '',
+        categoryId: editing.categoryId?.toString() ?? '',
         notes: editing.notes ?? '',
       });
     } else {
@@ -102,6 +108,7 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
       }
     }
 
+    if (form.categoryId) payload.categoryId = parseInt(form.categoryId, 10);
     if (form.notes.trim()) payload.notes = form.notes.trim();
     await onSubmit(payload);
   };
@@ -252,6 +259,36 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
               </div>
             </>
           )}
+
+          {/* Categoria */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Categoria do pagamento *
+            </label>
+            <Select
+              value={form.categoryId}
+              onValueChange={(v) => set('categoryId', v)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione a categoria" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={String(cat.id)}>
+                    <span className="flex items-center gap-2">
+                      {cat.color && (
+                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: cat.color }} />
+                      )}
+                      {cat.name}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Usada ao registrar pagamentos no extrato
+            </p>
+          </div>
 
           {/* Observações */}
           <div>

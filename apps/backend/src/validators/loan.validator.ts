@@ -4,6 +4,7 @@ export const createLoanSchema = z.object({
   type: z.enum(['LOAN', 'CREDIT_CARD', 'BOLETO']).default('LOAN'),
   name: z.string().min(1).max(100),
   principalAmount: z.number().positive(),
+  categoryId: z.number().int().positive().optional(),
   // LOAN / CREDIT_CARD
   interestRate: z.number().min(0).max(100).optional(),
   startDate: z.string().datetime().optional(),
@@ -17,6 +18,7 @@ export const createLoanSchema = z.object({
 
 export const updateLoanSchema = z.object({
   name: z.string().min(1).max(100).optional(),
+  categoryId: z.number().int().positive().nullable().optional(),
   interestRate: z.number().min(0).max(100).optional(),
   dueDayOfMonth: z.number().int().min(1).max(28).optional(),
   closingDay: z.number().int().min(1).max(28).optional(),

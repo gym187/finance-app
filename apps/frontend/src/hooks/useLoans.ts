@@ -20,6 +20,7 @@ export interface Loan {
   installmentAmount: number | null;
   totalPaid: number;
   isActive: boolean;
+  categoryId: number | null;
   notes: string | null;
   createdAt: string;
 }

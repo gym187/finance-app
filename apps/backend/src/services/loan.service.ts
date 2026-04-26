@@ -20,11 +20,8 @@ function nextDueDate(startDate: Date, dueDayOfMonth: number): Date {
   return candidate;
 }
 
-async function findCategory(userId: number, names: string[]) {
-  for (const name of names) {
-    const cat = await prisma.category.findFirst({ where: { userId, name } });
-    if (cat) return cat.id;
-  }
+async function resolveCategoryId(loanCategoryId: number | null, userId: number): Promise<number | null> {
+  if (loanCategoryId) return loanCategoryId;
   const fallback = await prisma.category.findFirst({ where: { userId } });
   return fallback?.id ?? null;
 }
@@ -58,6 +55,7 @@ export const loanService = {
           startDate: new Date(),
           dueDayOfMonth: due.getDate(),
           dueDate: due,
+          categoryId: data.categoryId ?? null,
           notes: data.notes ?? null,
         },
       });
@@ -82,6 +80,7 @@ export const loanService = {
           closingDay: data.closingDay ?? null,
           installments: data.installments ?? null,
           installmentAmount,
+          categoryId: data.categoryId ?? null,
           notes: data.notes ?? null,
         },
       });
@@ -108,6 +107,7 @@ export const loanService = {
         dueDayOfMonth: data.dueDayOfMonth,
         installments: data.installments ?? null,
         installmentAmount,
+        categoryId: data.categoryId ?? null,
         notes: data.notes ?? null,
       },
     });
@@ -128,6 +128,7 @@ export const loanService = {
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name }),
+        ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
         ...(data.interestRate !== undefined && { interestRate: data.interestRate }),
         ...(data.dueDayOfMonth !== undefined && { dueDayOfMonth: data.dueDayOfMonth }),
         ...(data.closingDay !== undefined && { closingDay: data.closingDay }),
@@ -149,7 +150,7 @@ export const loanService = {
 
     // ── BOLETO: pagamento simples, sem amortização ──────────────────────────
     if (loan.type === 'BOLETO') {
-      const categoryId = await findCategory(userId, ['Contas', 'Outros']);
+      const categoryId = await resolveCategoryId(loan.categoryId, userId);
       if (!categoryId) return null;
 
       const [payment] = await prisma.$transaction([
@@ -205,9 +206,7 @@ export const loanService = {
     }
 
     const isCompleted = newBalance <= 0.01;
-    const categoryNames =
-      loan.type === 'CREDIT_CARD' ? ['Cartão de Crédito', 'Outros'] : ['Empréstimos', 'Outros'];
-    const categoryId = await findCategory(userId, categoryNames);
+    const categoryId = await resolveCategoryId(loan.categoryId, userId);
     if (!categoryId) return null;
 
     const description =
