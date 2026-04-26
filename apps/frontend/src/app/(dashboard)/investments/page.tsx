@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, RefreshCw, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,18 +18,17 @@ export default function InvestmentsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingHolding, setEditingHolding] = useState<InvestmentHolding | null>(null);
-  const [targetInput, setTargetInput] = useState<string>(() => {
-    if (typeof window === 'undefined') return '';
-    return localStorage.getItem('investmentTarget') ?? '';
-  });
+  const [targetInput, setTargetInput] = useState('');
+
+  useEffect(() => {
+    setTargetInput(localStorage.getItem('investmentTarget') ?? '');
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('investmentTarget', targetInput);
+  }, [targetInput]);
 
   const targetAmount = parseFloat(targetInput) || 0;
-
-  const handleTargetBlur = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('investmentTarget', targetInput);
-    }
-  };
 
   const handleOpenNew = () => {
     setEditingHolding(null);
@@ -96,7 +95,6 @@ export default function InvestmentsPage() {
               placeholder="Ex: 100000"
               value={targetInput}
               onChange={(e) => setTargetInput(e.target.value)}
-              onBlur={handleTargetBlur}
               className="h-8 text-sm"
             />
           </div>
