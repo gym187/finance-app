@@ -37,7 +37,7 @@ export function PayModal({ open, onClose, onSubmit, loan, isLoading }: Props) {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Vencimento</span>
                   <span className="font-semibold">
-                    {new Date(loan.dueDate).toLocaleDateString('pt-BR')}
+                    {new Date(loan.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
                   </span>
                 </div>
               )}

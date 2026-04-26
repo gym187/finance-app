@@ -20,11 +20,13 @@ const TYPE_COLORS: Record<string, string> = {
 interface Props {
   holdings?: InvestmentHolding[];
   isLoading?: boolean;
+  targetAmount?: number;
   onEdit?: (holding: InvestmentHolding) => void;
   onDelete?: (id: number) => void;
 }
 
-export function HoldingsTable({ holdings, isLoading, onEdit, onDelete }: Props) {
+export function HoldingsTable({ holdings, isLoading, targetAmount, onEdit, onDelete }: Props) {
+  const hasTarget = targetAmount != null && targetAmount > 0;
   return (
     <Card>
       <CardHeader>
@@ -69,7 +71,7 @@ export function HoldingsTable({ holdings, isLoading, onEdit, onDelete }: Props) 
                     Rendimento
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    % Carteira
+                    {hasTarget ? '% Meta' : '% Carteira'}
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Ações
@@ -144,11 +146,24 @@ export function HoldingsTable({ holdings, isLoading, onEdit, onDelete }: Props) 
                     </td>
                     <td className="px-4 py-4 text-right">
                       <div className="flex flex-col items-end gap-0.5">
-                        <span className="font-medium">{formatPercent(h.currentPercent)}</span>
-                        {h.targetPercent !== null && (
-                          <span className="text-xs text-muted-foreground">
-                            meta: {formatPercent(h.targetPercent)}
-                          </span>
+                        {hasTarget ? (
+                          <>
+                            <span className="font-medium">
+                              {formatPercent((h.currentValue / targetAmount!) * 100)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              carteira: {formatPercent(h.currentPercent)}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-medium">{formatPercent(h.currentPercent)}</span>
+                            {h.targetPercent !== null && (
+                              <span className="text-xs text-muted-foreground">
+                                meta: {formatPercent(h.targetPercent)}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>

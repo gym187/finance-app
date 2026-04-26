@@ -87,7 +87,7 @@ export default function ReportsPage() {
   const result = totalIncome - totalExpense;
 
   const fmtDatePT = (d: string) =>
-    new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    new Date(d).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const handleExportCSV = async () => {
     const res = await api.transactions.exportCSV({ startDate, endDate });

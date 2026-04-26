@@ -9,7 +9,7 @@ export const formatPercent = (value: number, decimals = 1): string =>
   `${value.toFixed(decimals)}%`;
 
 export const formatDate = (date: string | Date): string =>
-  new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  new Date(date).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' });
 
 export const formatMonthLabel = (yearMonth: string): string => {
   const [year, month] = yearMonth.split('-');

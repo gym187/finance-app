@@ -21,7 +21,7 @@ const TAB_CONFIG: { type: LoanType; label: string; icon: React.ReactNode; emptyT
 
 function nextDueLabel(loan: Loan): string {
   if (loan.dueDate) {
-    return new Date(loan.dueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    return new Date(loan.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
   }
   const now = new Date();
   let due = new Date(now.getFullYear(), now.getMonth(), loan.dueDayOfMonth);
@@ -233,7 +233,7 @@ export default function LoansPage() {
               </div>
               {summary?.nextDue[0] ? (
                 <>
-                  <p className="text-lg font-bold">{new Date(summary.nextDue[0].dueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</p>
+                  <p className="text-lg font-bold">{new Date(summary.nextDue[0].dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })}</p>
                   <p className="text-xs text-muted-foreground truncate">{summary.nextDue[0].name}</p>
                 </>
               ) : (

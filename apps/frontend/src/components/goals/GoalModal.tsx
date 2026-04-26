@@ -77,7 +77,7 @@ export function GoalModal({ open, onClose, onSubmit, editing, isLoading }: Props
       color: form.color,
     };
     if (form.currentAmount.trim()) payload.currentAmount = parseFloat(form.currentAmount);
-    if (form.deadline.trim()) payload.deadline = new Date(form.deadline).toISOString();
+    if (form.deadline.trim()) payload.deadline = new Date(form.deadline + 'T00:00:00Z').toISOString();
     if (form.icon.trim()) payload.icon = form.icon.trim();
     await onSubmit(payload);
   };

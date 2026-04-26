@@ -1,13 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { InvestmentSummaryCards } from '@/components/investments/InvestmentSummaryCards';
 import { AllocationChart } from '@/components/investments/AllocationChart';
 import { HoldingsTable } from '@/components/investments/HoldingsTable';
 import { InvestmentModal } from '@/components/investments/InvestmentModal';
 import { useInvestmentSummary, useInvestmentMutations } from '@/hooks/useInvestments';
+import { formatBRL, formatPercent } from '@/lib/formatters';
 import type { InvestmentHolding } from '@/hooks/useInvestments';
 
 export default function InvestmentsPage() {
@@ -16,6 +18,18 @@ export default function InvestmentsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingHolding, setEditingHolding] = useState<InvestmentHolding | null>(null);
+  const [targetInput, setTargetInput] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('investmentTarget') ?? '';
+  });
+
+  const targetAmount = parseFloat(targetInput) || 0;
+
+  const handleTargetBlur = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('investmentTarget', targetInput);
+    }
+  };
 
   const handleOpenNew = () => {
     setEditingHolding(null);
@@ -66,6 +80,46 @@ export default function InvestmentsPage() {
       {/* KPI cards */}
       <InvestmentSummaryCards summary={summary} isLoading={isLoading} />
 
+      {/* Investment target */}
+      <div className="rounded-xl border bg-card p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2 text-sm font-medium min-w-fit">
+            <Target className="h-4 w-4 text-primary" />
+            Meta de Patrimônio
+          </div>
+          <div className="flex items-center gap-2 flex-1 min-w-[180px] max-w-xs">
+            <span className="text-sm text-muted-foreground">R$</span>
+            <Input
+              type="number"
+              step="1000"
+              min="0"
+              placeholder="Ex: 100000"
+              value={targetInput}
+              onChange={(e) => setTargetInput(e.target.value)}
+              onBlur={handleTargetBlur}
+              className="h-8 text-sm"
+            />
+          </div>
+          {targetAmount > 0 && summary && (
+            <div className="flex flex-1 flex-col gap-1 min-w-[200px]">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{formatBRL(summary.currentValue)} atual</span>
+                <span>{formatPercent((summary.currentValue / targetAmount) * 100)} da meta</span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${Math.min(100, (summary.currentValue / targetAmount) * 100)}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Faltam {formatBRL(Math.max(0, targetAmount - summary.currentValue))} para atingir a meta
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Allocation chart + top holdings */}
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-3">
         <AllocationChart allocation={summary?.allocation} isLoading={isLoading} />
@@ -113,6 +167,7 @@ export default function InvestmentsPage() {
       <HoldingsTable
         holdings={summary?.holdings}
         isLoading={isLoading}
+        targetAmount={targetAmount > 0 ? targetAmount : undefined}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
