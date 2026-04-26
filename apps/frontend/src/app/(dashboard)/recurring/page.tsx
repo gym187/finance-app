@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Plus, Pencil, Trash2, RefreshCw,
   RepeatIcon, CheckCircle2, PauseCircle,
@@ -55,7 +55,7 @@ function RecurringModal({
 }) {
   const [form, setForm] = useState<FormState>(emptyForm);
 
-  useState(() => {
+  useEffect(() => {
     if (editing) {
       setForm({
         description: editing.description,
@@ -69,7 +69,7 @@ function RecurringModal({
     } else {
       setForm(emptyForm);
     }
-  });
+  }, [editing, open]);
 
   const f = (key: keyof FormState) => ({
     value: form[key],
