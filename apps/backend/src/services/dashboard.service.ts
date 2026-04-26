@@ -27,7 +27,7 @@ export const dashboardService = {
           orderBy: { date: 'asc' },
         }),
         prisma.budget.findMany({
-          where: { userId, month: currentMonthStr },
+          where: { userId },
           include: { category: true },
         }),
       ]);

@@ -77,17 +77,18 @@ model Budget {
   id         Int        @id @default(autoincrement())
   userId     Int
   categoryId Int?
-  month      String // "YYYY-MM"
+  month      String? // legado — ignorado; orçamentos agora são permanentes
   amount     Decimal
   type       BudgetType
 
-  alerted80  Boolean @default(false)
-  alerted100 Boolean @default(false)
+  alerted80    Boolean @default(false)
+  alerted100   Boolean @default(false)
+  alertedMonth String? // mês em que os alertas foram disparados (yyyy-MM)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id])
 
-  @@index([userId, month])
+  @@index([userId])
 }
 
 enum TransactionType {

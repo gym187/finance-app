@@ -2,13 +2,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import type { Budget } from '@finance-app/shared';
-import { currentMonth } from '@/lib/formatters';
 
-export function useBudgets(month?: string) {
-  const m = month ?? currentMonth();
+export function useBudgets() {
   return useQuery({
-    queryKey: ['budgets', m],
-    queryFn: () => api.budgets.list(m),
+    queryKey: ['budgets'],
+    queryFn: () => api.budgets.list(),
     select: (res) => (res.data as Budget[]) ?? [],
   });
 }

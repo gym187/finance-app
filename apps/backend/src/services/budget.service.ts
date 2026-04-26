@@ -20,7 +20,6 @@ export const budgetService = {
       data: {
         userId,
         categoryId: data.categoryId ?? null,
-        month: data.month,
         amount: new Decimal(data.amount),
         type: data.type,
       },
@@ -28,9 +27,9 @@ export const budgetService = {
     });
   },
 
-  async findAll(userId: number, month?: string) {
+  async findAll(userId: number) {
     return prisma.budget.findMany({
-      where: { userId, ...(month ? { month } : {}) },
+      where: { userId },
       include: { category: true },
       orderBy: [{ type: 'asc' }, { id: 'asc' }],
     });
@@ -60,7 +59,6 @@ export const budgetService = {
       where: { id },
       data: {
         categoryId: data.categoryId,
-        month: data.month,
         amount: data.amount ? new Decimal(data.amount) : undefined,
         type: data.type,
       },
@@ -75,13 +73,17 @@ export const budgetService = {
   },
 
   async checkBudgetAlerts(userId: number, categoryId: number, date: Date) {
-    const month = format(date, 'yyyy-MM');
+    const currentMonth = format(date, 'yyyy-MM');
 
     const budget = await prisma.budget.findFirst({
-      where: { userId, categoryId, month, type: 'EXPENSE' },
+      where: { userId, categoryId, type: 'EXPENSE' },
       include: { category: true },
     });
     if (!budget) return;
+
+    const monthChanged = budget.alertedMonth !== currentMonth;
+    const alerted80 = monthChanged ? false : budget.alerted80;
+    const alerted100 = monthChanged ? false : budget.alerted100;
 
     const spending = await prisma.transaction.aggregate({
       where: {
@@ -105,11 +107,13 @@ export const budgetService = {
 
     const categoryName = budget.category?.name ?? 'Categoria';
     const monthLabel = format(date, 'MM/yyyy');
-
     const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    if (pct >= 100 && !budget.alerted100) {
-      await prisma.budget.update({ where: { id: budget.id }, data: { alerted100: true } });
+    if (pct >= 100 && !alerted100) {
+      await prisma.budget.update({
+        where: { id: budget.id },
+        data: { alerted100: true, alerted80: true, alertedMonth: currentMonth },
+      });
       emailService
         .sendBudgetAlert(user.email, {
           userName: user.name ?? 'Usuário',
@@ -129,8 +133,11 @@ export const budgetService = {
           link: '/budgets',
         })
         .catch(() => {});
-    } else if (pct >= 80 && !budget.alerted80) {
-      await prisma.budget.update({ where: { id: budget.id }, data: { alerted80: true } });
+    } else if (pct >= 80 && !alerted80) {
+      await prisma.budget.update({
+        where: { id: budget.id },
+        data: { alerted80: true, alertedMonth: currentMonth },
+      });
       emailService
         .sendBudgetAlert(user.email, {
           userName: user.name ?? 'Usuário',
@@ -150,6 +157,12 @@ export const budgetService = {
           link: '/budgets',
         })
         .catch(() => {});
+    } else if (monthChanged && (budget.alerted80 || budget.alerted100)) {
+      // resetar flags do mês anterior silenciosamente
+      await prisma.budget.update({
+        where: { id: budget.id },
+        data: { alerted80: false, alerted100: false, alertedMonth: currentMonth },
+      });
     }
   },
 };

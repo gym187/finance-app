@@ -159,10 +159,7 @@ class ApiClient {
 
   // ─── Budgets ──────────────────────────────────────────────────────────────
   budgets = {
-    list: (month?: string) => {
-      const qs = month ? `?month=${month}` : '';
-      return this.request<ApiResponse<unknown[]>>(`/budgets${qs}`);
-    },
+    list: () => this.request<ApiResponse<unknown[]>>('/budgets'),
     create: (data: unknown) =>
       this.request<ApiResponse<unknown>>('/budgets', {
         method: 'POST',

@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useBudgets, useCreateBudget, useUpdateBudget, useDeleteBudget } from '@/hooks/useBudgets';
 import { useCategories } from '@/hooks/useCategories';
 import { useDashboard } from '@/hooks/useDashboard';
-import { formatBRL, formatPercent, currentMonth, monthLabel } from '@/lib/formatters';
+import { formatBRL, formatPercent, monthLabel, currentMonth } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,18 +22,16 @@ import type { Budget } from '@finance-app/shared';
 
 const budgetSchema = z.object({
   categoryId: z.number().optional().nullable(),
-  month: z.string().regex(/^\d{4}-\d{2}$/),
   amount: z.number({ invalid_type_error: 'Valor inválido' }).positive(),
   type: z.enum(['INCOME', 'EXPENSE', 'TOTAL']),
 });
 type BudgetForm = z.infer<typeof budgetSchema>;
 
 export default function BudgetsPage() {
-  const [month, setMonth] = useState(currentMonth());
   const [showForm, setShowForm] = useState(false);
   const [editBudget, setEditBudget] = useState<Budget | null>(null);
 
-  const { data: budgets = [], isLoading } = useBudgets(month);
+  const { data: budgets = [], isLoading } = useBudgets();
   const { data: categories = [] } = useCategories();
   const { data: dashboard } = useDashboard();
   const createBudget = useCreateBudget();
@@ -45,17 +43,17 @@ export default function BudgetsPage() {
   );
 
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
-    useForm<BudgetForm>({ resolver: zodResolver(budgetSchema), defaultValues: { month: currentMonth(), type: 'EXPENSE' } });
+    useForm<BudgetForm>({ resolver: zodResolver(budgetSchema), defaultValues: { type: 'EXPENSE' } });
 
   const openCreate = () => {
     setEditBudget(null);
-    reset({ month, type: 'EXPENSE' });
+    reset({ type: 'EXPENSE' });
     setShowForm(true);
   };
 
   const openEdit = (b: Budget) => {
     setEditBudget(b);
-    reset({ categoryId: b.categoryId, month: b.month, amount: b.amount, type: b.type });
+    reset({ categoryId: b.categoryId, amount: b.amount, type: b.type });
     setShowForm(true);
   };
 
@@ -74,20 +72,14 @@ export default function BudgetsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold sm:text-2xl">Orçamentos</h2>
-          <p className="text-sm text-muted-foreground">{monthLabel(month)}</p>
+          <p className="text-sm text-muted-foreground">
+            Uso de {monthLabel(currentMonth())} · limites mensais recorrentes
+          </p>
         </div>
-        <div className="flex gap-2 sm:gap-3">
-          <Input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="w-36 sm:w-40"
-          />
-          <Button onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Orçamento
-          </Button>
-        </div>
+        <Button onClick={openCreate}>
+          <Plus className="mr-2 h-4 w-4" />
+          Novo Orçamento
+        </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
@@ -98,7 +90,7 @@ export default function BudgetsPage() {
           : budgets.length === 0
           ? (
             <div className="col-span-full py-12 text-center text-muted-foreground">
-              Nenhum orçamento para {monthLabel(month)}.{' '}
+              Nenhum orçamento cadastrado.{' '}
               <button onClick={openCreate} className="text-primary hover:underline">
                 Criar agora
               </button>
@@ -140,7 +132,7 @@ export default function BudgetsPage() {
                         <Button
                           variant="ghost" size="icon"
                           className="h-7 w-7 text-destructive"
-                          onClick={() => deleteBudget.mutate(b.id)}
+                          onClick={() => confirm('Excluir este orçamento?') && deleteBudget.mutate(b.id)}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -164,7 +156,7 @@ export default function BudgetsPage() {
       </div>
 
       <Dialog open={showForm} onOpenChange={setShowForm}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{editBudget ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
           </DialogHeader>
@@ -186,9 +178,13 @@ export default function BudgetsPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="mb-1.5 block text-sm font-medium">Mês</label>
-                <Input type="month" {...register('month')} />
-                {errors.month && <p className="mt-1 text-xs text-destructive">{errors.month.message}</p>}
+                <label className="mb-1.5 block text-sm font-medium">Valor Limite (R$)</label>
+                <Input
+                  type="number" step="0.01" min="0"
+                  {...register('amount', { valueAsNumber: true })}
+                  placeholder="0,00"
+                />
+                {errors.amount && <p className="mt-1 text-xs text-destructive">{errors.amount.message}</p>}
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium">Tipo</label>
@@ -204,15 +200,6 @@ export default function BudgetsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Valor Limite (R$)</label>
-              <Input
-                type="number" step="0.01" min="0"
-                {...register('amount', { valueAsNumber: true })}
-                placeholder="0,00"
-              />
-              {errors.amount && <p className="mt-1 text-xs text-destructive">{errors.amount.message}</p>}
             </div>
             <DialogFooter>
               <Button variant="outline" type="button" onClick={() => setShowForm(false)}>Cancelar</Button>

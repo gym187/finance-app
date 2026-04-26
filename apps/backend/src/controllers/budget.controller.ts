@@ -11,8 +11,7 @@ export const budgetController = {
   },
 
   async findAll(req: AuthenticatedRequest, res: Response) {
-    const { month } = req.query as { month?: string };
-    const result = await budgetService.findAll(req.userId!, month);
+    const result = await budgetService.findAll(req.userId!);
     res.json({ success: true, data: result });
   },
 
