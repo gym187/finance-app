@@ -305,8 +305,9 @@ export const loanService = {
 
   async summary(userId: number) {
     const loans = await prisma.loan.findMany({ where: { userId, isActive: true } });
+    const allLoans = await prisma.loan.findMany({ where: { userId }, select: { totalPaid: true } });
     const totalDebt = loans.reduce((s, l) => s + Number(l.currentBalance), 0);
-    const totalPaid = loans.reduce((s, l) => s + Number(l.totalPaid), 0);
+    const totalPaid = allLoans.reduce((s, l) => s + Number(l.totalPaid), 0);
 
     const nextDue = loans
       .map((l) => {
