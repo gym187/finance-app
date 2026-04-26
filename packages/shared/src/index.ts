@@ -42,7 +42,7 @@ export interface Budget {
   id: number;
   userId: number;
   categoryId: number | null;
-  month: string;
+  month?: string | null;
   amount: number;
   type: BudgetType;
   category?: Category | null;

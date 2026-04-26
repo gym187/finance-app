@@ -62,7 +62,7 @@ export default function ReportsPage() {
   });
 
   const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const { data: budgets = [] } = useBudgets(currentMonthStr);
+  const { data: budgets = [] } = useBudgets();
 
   const transactions = (txData?.data ?? []) as unknown as Transaction[];
 
