@@ -306,6 +306,31 @@ class ApiClient {
     delete: (id: number) =>
       this.request<ApiResponse<unknown>>(`/investments/${id}`, { method: 'DELETE' }),
   };
+
+  // ─── Admin ────────────────────────────────────────────────────────────────
+  admin = {
+    metrics: () => this.request<ApiResponse<unknown>>('/admin/metrics'),
+    listUsers: (params?: Record<string, string | undefined>) => {
+      const filtered = params
+        ? Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined) as [string, string][])
+        : undefined;
+      const qs = filtered && Object.keys(filtered).length ? '?' + new URLSearchParams(filtered).toString() : '';
+      return this.request<ApiResponse<unknown>>(`/admin/users${qs}`);
+    },
+    getUser: (id: number) => this.request<ApiResponse<unknown>>(`/admin/users/${id}`),
+    createUser: (data: unknown) =>
+      this.request<ApiResponse<unknown>>('/admin/users', { method: 'POST', body: JSON.stringify(data) }),
+    updateUser: (id: number, data: unknown) =>
+      this.request<ApiResponse<unknown>>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    updateSubscription: (id: number, data: unknown) =>
+      this.request<ApiResponse<unknown>>(`/admin/users/${id}/subscription`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    listPlans: () => this.request<ApiResponse<unknown[]>>('/admin/plans'),
+    upsertPlan: (data: unknown) =>
+      this.request<ApiResponse<unknown>>('/admin/plans', { method: 'POST', body: JSON.stringify(data) }),
+  };
 }
 
 export const api = new ApiClient();

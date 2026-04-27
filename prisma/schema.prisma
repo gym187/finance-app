@@ -12,7 +12,12 @@ model User {
   name       String?
   email      String   @unique
   password   String
-  telegramId BigInt?  @unique // para vincular conta Telegram
+  telegramId BigInt?  @unique
+
+  role        UserRole @default(USER)
+  phone       String?
+  document    String?  // CPF
+  companyName String?
 
   emailVerified            Boolean   @default(false)
   emailVerificationToken   String?   @unique
@@ -34,6 +39,68 @@ model User {
   tags                  Tag[]
   pushSubscriptions     PushSubscription[]
   notifications         AppNotification[]
+  subscription          Subscription?
+  auditLogs             AuditLog[]   @relation("AuditAdmin")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+model Plan {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique
+  description String?
+  price       Decimal
+  isActive    Boolean  @default(true)
+  trialDays   Int      @default(14)
+  createdAt   DateTime @default(now())
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id        Int                @id @default(autoincrement())
+  userId    Int                @unique
+  planId    Int
+  status    SubscriptionStatus @default(TRIAL)
+  startDate DateTime           @default(now())
+  endDate   DateTime?
+  trialEnd  DateTime?
+  notes     String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@index([status])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  adminId    Int
+  action     String
+  targetId   Int?
+  targetType String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  admin User @relation("AuditAdmin", fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([createdAt])
 }
 
 model Category {

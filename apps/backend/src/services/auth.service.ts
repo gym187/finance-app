@@ -44,8 +44,21 @@ export const authService = {
         emailVerificationToken: verificationToken,
         emailVerificationExpires: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
       },
-      select: { id: true, name: true, email: true, emailVerified: true, createdAt: true, updatedAt: true },
+      select: { id: true, name: true, email: true, emailVerified: true, role: true, createdAt: true, updatedAt: true },
     });
+
+    // Criar assinatura trial automaticamente
+    const plan = await prisma.plan.findUnique({ where: { slug: 'pro' } });
+    if (plan) {
+      await prisma.subscription.create({
+        data: {
+          userId: user.id,
+          planId: plan.id,
+          status: 'TRIAL',
+          trialEnd: new Date(Date.now() + plan.trialDays * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
 
     await createDefaultCategories(user.id);
     emailService.sendEmailVerification(user.email, verificationToken).catch((err) =>
@@ -172,9 +185,21 @@ export const authService = {
         name: true,
         email: true,
         emailVerified: true,
+        role: true,
+        phone: true,
+        document: true,
+        companyName: true,
         telegramId: true,
         createdAt: true,
         updatedAt: true,
+        subscription: {
+          select: {
+            status: true,
+            trialEnd: true,
+            endDate: true,
+            plan: { select: { name: true, slug: true, price: true } },
+          },
+        },
       },
     });
     if (!user) {

@@ -17,6 +17,7 @@ import {
   Wallet,
   CreditCard,
   Calculator,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -122,6 +123,23 @@ function SidebarContent({
             </Link>
           );
         })}
+        {user?.role === 'ADMIN' && (
+          <Link
+            href="/admin"
+            onClick={onNavClick}
+            title={collapsed ? 'Admin' : undefined}
+            className={cn(
+              'flex items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mt-2 border-t pt-3',
+              collapsed ? 'justify-center' : 'gap-3',
+              pathname.startsWith('/admin')
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+            )}
+          >
+            <ShieldCheck className="h-4 w-4 flex-shrink-0" />
+            {!collapsed && 'Painel Admin'}
+          </Link>
+        )}
       </nav>
 
       {/* Bottom actions */}

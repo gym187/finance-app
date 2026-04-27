@@ -13,6 +13,7 @@ import tagRoutes from './tag.routes';
 import exchangeRoutes from './exchange.routes';
 import pushRoutes from './push.routes';
 import notificationRoutes from './notification.routes';
+import adminRoutes from './admin.routes';
 
 const router = Router();
 
@@ -34,5 +35,6 @@ router.use('/tags', tagRoutes);
 router.use('/exchange', exchangeRoutes);
 router.use('/push', pushRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/admin', adminRoutes);
 
 export default router;
