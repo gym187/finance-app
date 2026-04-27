@@ -10,7 +10,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finance}"]
       interval: 10s
@@ -31,7 +31,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       PORT: 3001
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: production
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       WEBHOOK_URL: ${WEBHOOK_URL}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3002}
@@ -94,5 +94,5 @@ services:
   #     - traefik_certs:/letsencrypt
 
 volumes:
-  postgres_data:
+  pgdata:
   # traefik_certs:
