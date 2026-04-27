@@ -93,7 +93,8 @@ export const dashboardService = {
     const budgetSummary = budgets.map((b) => {
       let spent = 0;
       if (b.categoryId !== null) {
-        const txs = currentMonthTxs.filter((t) => t.categoryId === b.categoryId);
+        const txType = b.type === 'INCOME' ? 'INCOME' : 'EXPENSE';
+        const txs = currentMonthTxs.filter((t) => t.categoryId === b.categoryId && t.type === txType);
         spent = txs.reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
       } else {
         if (b.type === 'INCOME') spent = totalIncome;
