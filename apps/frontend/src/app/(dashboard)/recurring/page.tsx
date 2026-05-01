@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRecurring, useRecurringMutations, FREQ_LABELS } from '@/hooks/useRecurring';
 import { useCategories } from '@/hooks/useCategories';
-import { formatBRL, formatDate } from '@/lib/formatters';
+import { formatBRL, formatDate, todayBR } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { RecurringTransaction, RecurrencyFreq } from '@/hooks/useRecurring';
 import type { Category } from '@finance-app/shared';
@@ -31,7 +31,7 @@ interface FormState {
   endDate: string;
 }
 
-const today = new Date().toISOString().split('T')[0];
+const today = todayBR();
 
 const emptyForm: FormState = {
   description: '',

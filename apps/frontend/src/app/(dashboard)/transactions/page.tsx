@@ -18,7 +18,7 @@ import { useCategories } from '@/hooks/useCategories';
 import { useTags } from '@/hooks/useTags';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { TagSelector } from '@/components/transactions/TagSelector';
-import { formatBRL, formatDate } from '@/lib/formatters';
+import { formatBRL, formatDate, todayBR } from '@/lib/formatters';
 import { api } from '@/lib/api';
 import { ImportModal } from '@/components/transactions/ImportModal';
 import type { Transaction, Currency } from '@finance-app/shared';
@@ -77,13 +77,13 @@ export default function TransactionsPage() {
   const { register, handleSubmit, reset, setValue, watch, formState: { errors } } =
     useForm<TxForm>({
       resolver: zodResolver(txSchema),
-      defaultValues: { date: new Date().toISOString().split('T')[0] },
+      defaultValues: { date: todayBR() },
     });
 
   const openCreate = () => {
     setEditTx(null);
     setSelectedTagIds([]);
-    reset({ date: new Date().toISOString().split('T')[0], type: 'EXPENSE', currency: 'BRL' });
+    reset({ date: todayBR(), type: 'EXPENSE', currency: 'BRL' });
     setShowForm(true);
   };
 

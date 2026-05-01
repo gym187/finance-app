@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCategories } from '@/hooks/useCategories';
 import type { Loan, LoanType } from '@/hooks/useLoans';
+import { todayBR } from '@/lib/formatters';
 
 interface Props {
   open: boolean;
@@ -30,7 +31,7 @@ interface FormState {
   notes: string;
 }
 
-const today = new Date().toISOString().split('T')[0];
+const today = todayBR();
 
 const empty: FormState = {
   type: 'LOAN',

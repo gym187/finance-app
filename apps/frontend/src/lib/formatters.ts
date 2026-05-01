@@ -27,3 +27,9 @@ export const monthLabel = (yearMonth: string): string => {
   const date = new Date(parseInt(year), parseInt(month) - 1);
   return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 };
+
+// Returns today's date as YYYY-MM-DD in Brazil timezone (UTC-3).
+// Use this instead of new Date().toISOString().split('T')[0] to avoid
+// the date flipping to the next day after 21:00 BR (midnight UTC).
+export const todayBR = (): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
