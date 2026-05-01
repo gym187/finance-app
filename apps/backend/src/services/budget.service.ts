@@ -1,5 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { nowBR } from '../config/date';
 import { prisma } from '../config/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../config/logger';
@@ -73,7 +74,7 @@ export const budgetService = {
   },
 
   async checkBudgetAlerts(userId: number, categoryId: number, date: Date) {
-    const currentMonth = format(date, 'yyyy-MM');
+    const currentMonth = format(nowBR(), 'yyyy-MM');
 
     const budget = await prisma.budget.findFirst({
       where: { userId, categoryId, type: 'EXPENSE' },

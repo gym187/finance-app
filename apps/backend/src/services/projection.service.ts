@@ -1,5 +1,6 @@
 import { format, startOfMonth, subMonths, addMonths } from 'date-fns';
 import { prisma } from '../config/prisma';
+import { nowBR } from '../config/date';
 
 // Monthly multiplier for each recurrency frequency
 const MONTHLY_FACTOR: Record<string, number> = {
@@ -11,7 +12,7 @@ const MONTHLY_FACTOR: Record<string, number> = {
 
 export const projectionService = {
   async getProjection(userId: number) {
-    const now = new Date();
+    const now = nowBR();
     const sixMonthsAgo = startOfMonth(subMonths(now, 6));
 
     const [allTime, last6Months, activeRecurring] = await Promise.all([

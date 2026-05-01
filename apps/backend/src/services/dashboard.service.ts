@@ -1,9 +1,10 @@
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { prisma } from '../config/prisma';
+import { nowBR } from '../config/date';
 
 export const dashboardService = {
   async getData(userId: number) {
-    const now = new Date();
+    const now = nowBR();
     const currentMonthStart = startOfMonth(now);
     const currentMonthEnd = endOfMonth(now);
     const prevMonthStart = startOfMonth(subMonths(now, 1));
