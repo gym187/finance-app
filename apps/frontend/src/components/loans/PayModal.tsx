@@ -18,21 +18,51 @@ export function PayModal({ open, onClose, onSubmit, loan, isLoading }: Props) {
 
   const balance = loan.currentBalance;
 
-  // ── BOLETO: pagamento simples ──────────────────────────────────────────────
+  // ── BOLETO: pagamento simples ou parcelado ────────────────────────────────
   if (loan.type === 'BOLETO') {
+    const isInstallment = loan.isInstallmentDebt && loan.installments && loan.installmentAmount;
+    const currentInstallment = isInstallment ? loan.paidInstallments + 1 : null;
+    const installmentAmount = isInstallment ? loan.installmentAmount! : balance;
+
     return (
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Pagar Boleto — {loan.name}</DialogTitle>
+            <DialogTitle>
+              {isInstallment ? `Pagar Parcela — ${loan.name}` : `Pagar Boleto — ${loan.name}`}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1.5">
+              {isInstallment && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Parcela</span>
+                  <span className="font-semibold text-primary">
+                    {currentInstallment}/{loan.installments}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Valor do boleto</span>
-                <span className="font-semibold">{formatBRL(balance)}</span>
+                <span className="text-muted-foreground">
+                  {isInstallment ? 'Valor da parcela' : 'Valor do boleto'}
+                </span>
+                <span className="font-semibold">{formatBRL(installmentAmount)}</span>
               </div>
+              {isInstallment && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total pago até agora</span>
+                    <span className="font-semibold text-green-600">{formatBRL(loan.totalPaid)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1">
+                    <span className="text-muted-foreground">Restante após pagar</span>
+                    <span className="font-semibold text-red-500">
+                      {formatBRL(Math.max(0, balance - installmentAmount))}
+                    </span>
+                  </div>
+                </>
+              )}
               {loan.dueDate && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Vencimento</span>
@@ -48,9 +78,12 @@ export function PayModal({ open, onClose, onSubmit, loan, isLoading }: Props) {
               disabled={isLoading}
               className="w-full flex flex-col rounded-lg border-2 border-primary bg-primary/5 p-4 text-left transition hover:bg-primary/10 disabled:opacity-50"
             >
-              <span className="font-semibold text-primary">Confirmar Pagamento</span>
+              <span className="font-semibold text-primary">
+                {isInstallment ? `Confirmar Parcela ${currentInstallment}/${loan.installments}` : 'Confirmar Pagamento'}
+              </span>
               <span className="mt-0.5 text-sm text-muted-foreground">
-                Registra saída de <strong className="text-foreground">{formatBRL(balance)}</strong> e marca como pago
+                Registra saída de <strong className="text-foreground">{formatBRL(installmentAmount)}</strong>
+                {isInstallment && currentInstallment === loan.installments && ' e quita a dívida'}
               </span>
             </button>
           </div>

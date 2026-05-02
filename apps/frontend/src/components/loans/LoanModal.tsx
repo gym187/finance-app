@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCategories } from '@/hooks/useCategories';
 import type { Loan, LoanType } from '@/hooks/useLoans';
-import { todayBR } from '@/lib/formatters';
+import { todayBR, formatBRL } from '@/lib/formatters';
 
 interface Props {
   open: boolean;
@@ -29,6 +29,7 @@ interface FormState {
   installments: string;
   categoryId: string;
   notes: string;
+  isInstallmentDebt: boolean;
 }
 
 const today = todayBR();
@@ -45,6 +46,7 @@ const empty: FormState = {
   installments: '',
   categoryId: '',
   notes: '',
+  isInstallmentDebt: false,
 };
 
 const TYPE_LABELS: Record<LoanType, string> = {
@@ -71,19 +73,27 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
         installments: editing.installments?.toString() ?? '',
         categoryId: editing.categoryId?.toString() ?? '',
         notes: editing.notes ?? '',
+        isInstallmentDebt: editing.isInstallmentDebt ?? false,
       });
     } else {
       setForm(empty);
     }
   }, [editing, open]);
 
-  const set = (key: keyof FormState, value: string) =>
+  const set = (key: keyof FormState, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
 
   const field = (key: keyof FormState) => ({
-    value: form[key],
+    value: form[key] as string,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(key, e.target.value),
   });
+
+  const totalInstallments = parseInt(form.installments, 10);
+  const principal = parseFloat(form.principalAmount);
+  const installmentValue =
+    form.isInstallmentDebt && totalInstallments > 0 && principal > 0
+      ? principal / totalInstallments
+      : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,6 +105,10 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
 
     if (form.type === 'BOLETO') {
       payload.dueDate = new Date(form.dueDate).toISOString();
+      if (form.isInstallmentDebt && form.installments.trim()) {
+        payload.isInstallmentDebt = true;
+        payload.installments = parseInt(form.installments, 10);
+      }
     } else {
       payload.interestRate = parseFloat(form.interestRate) || 0;
       payload.dueDayOfMonth = parseInt(form.dueDayOfMonth, 10);
@@ -169,7 +183,11 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
           {/* Valor */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              {form.type === 'CREDIT_CARD' ? 'Saldo devedor atual (R$) *' : 'Valor (R$) *'}
+              {form.type === 'BOLETO' && form.isInstallmentDebt
+                ? 'Valor total da dívida (R$) *'
+                : form.type === 'CREDIT_CARD'
+                ? 'Saldo devedor atual (R$) *'
+                : 'Valor (R$) *'}
             </label>
             <Input
               type="number"
@@ -182,12 +200,55 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
             />
           </div>
 
-          {/* BOLETO: data de vencimento exata */}
+          {/* BOLETO: checkbox dívida parcelada + campos condicionais */}
           {form.type === 'BOLETO' && (
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Data de vencimento *</label>
-              <Input type="date" {...field('dueDate')} required />
-            </div>
+            <>
+              {/* Checkbox dívida parcelada */}
+              {!editing && (
+                <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={form.isInstallmentDebt}
+                    onChange={(e) => set('isInstallmentDebt', e.target.checked)}
+                    className="h-4 w-4 rounded border-input accent-primary"
+                  />
+                  <span className="text-sm font-medium">Dívida parcelada</span>
+                </label>
+              )}
+
+              {/* Campos extras ao marcar dívida parcelada */}
+              {form.isInstallmentDebt && (
+                <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                      Quantidade de parcelas *
+                    </label>
+                    <Input
+                      type="number"
+                      min="2"
+                      placeholder="Ex: 12"
+                      {...field('installments')}
+                      required={form.isInstallmentDebt}
+                      disabled={!!editing}
+                    />
+                  </div>
+
+                  {installmentValue !== null && (
+                    <div className="rounded-md bg-primary/5 px-3 py-2 text-sm">
+                      <span className="text-muted-foreground">Valor de cada parcela: </span>
+                      <span className="font-semibold text-primary">{formatBRL(installmentValue)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  {form.isInstallmentDebt ? 'Vencimento da 1ª parcela *' : 'Data de vencimento *'}
+                </label>
+                <Input type="date" {...field('dueDate')} required />
+              </div>
+            </>
           )}
 
           {/* LOAN / CREDIT_CARD: juros + vencimento */}
@@ -221,7 +282,6 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
                 </div>
               </div>
 
-              {/* Cartão: dia de fechamento */}
               {form.type === 'CREDIT_CARD' && (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Dia de fechamento da fatura</label>
@@ -235,7 +295,6 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
                 </div>
               )}
 
-              {/* Empréstimo: data de início */}
               {form.type === 'LOAN' && (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Data de início *</label>
@@ -243,7 +302,6 @@ export function LoanModal({ open, onClose, onSubmit, editing, isLoading }: Props
                 </div>
               )}
 
-              {/* Parcelas */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                   {form.type === 'CREDIT_CARD' ? 'Parcelas do parcelamento (opcional)' : 'Número de parcelas (opcional)'}

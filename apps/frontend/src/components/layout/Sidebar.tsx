@@ -28,7 +28,7 @@ const navItems = [
   { href: '/recurring', label: 'Recorrentes', icon: Repeat2 },
   { href: '/investments', label: 'Investimentos', icon: LineChart },
   { href: '/goals', label: 'Metas', icon: Target },
-  { href: '/loans', label: 'Empréstimos', icon: CreditCard },
+  { href: '/loans', label: 'Dívidas', icon: CreditCard },
   { href: '/categories', label: 'Categorias', icon: FolderOpen },
   { href: '/budgets', label: 'Orçamentos', icon: Wallet },
   { href: '/reports', label: 'Relatórios', icon: BarChart3 },
