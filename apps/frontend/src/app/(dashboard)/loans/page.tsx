@@ -37,7 +37,9 @@ function progressPct(loan: Loan): number {
 
 function isOverdue(loan: Loan): boolean {
   if (!loan.dueDate) return false;
-  return new Date(loan.dueDate) < new Date();
+  const dueDay = loan.dueDate.slice(0, 10);
+  const todayDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  return dueDay < todayDay;
 }
 
 function LoanCard({ loan, onPay, onEdit, onDelete, onHistory }: {

@@ -33,3 +33,8 @@ export const monthLabel = (yearMonth: string): string => {
 // the date flipping to the next day after 21:00 BR (midnight UTC).
 export const todayBR = (): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+
+// Format a full timestamp (e.g. payment dates) in Brasília timezone.
+// Use formatDate() for dates stored as UTC midnight (due dates, goals, etc).
+export const formatTimestampBR = (date: string | Date): string =>
+  new Date(date).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });

@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { useLoanPayments, useLoanSchedule } from '@/hooks/useLoans';
-import { formatBRL, formatDate } from '@/lib/formatters';
+import { formatBRL, formatTimestampBR } from '@/lib/formatters';
 import { useState } from 'react';
 
 interface Props {
@@ -55,7 +55,7 @@ export function LoanPaymentsDrawer({ open, onClose, loanId, loanName }: Props) {
                       <Badge variant={p.type === 'FULL' ? 'default' : 'secondary'} className="text-xs">
                         {p.type === 'FULL' ? 'Parcela' : 'Só juros'}
                       </Badge>
-                      <span className="text-muted-foreground text-xs">{formatDate(p.date)}</span>
+                      <span className="text-muted-foreground text-xs">{formatTimestampBR(p.date)}</span>
                     </div>
                     <span className="font-semibold text-red-500">-{formatBRL(p.amount)}</span>
                   </div>
