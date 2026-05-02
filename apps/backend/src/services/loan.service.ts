@@ -44,6 +44,10 @@ export const loanService = {
     if (type === 'BOLETO') {
       if (!data.dueDate) throw new Error('dueDate obrigatório para boleto');
       const due = new Date(data.dueDate);
+      const isInstallmentDebt = !!(data.isInstallmentDebt && data.installments && data.installments > 0);
+      const installmentAmount = isInstallmentDebt
+        ? data.principalAmount / data.installments!
+        : null;
       return prisma.loan.create({
         data: {
           userId,
@@ -57,6 +61,10 @@ export const loanService = {
           dueDate: due,
           categoryId: data.categoryId ?? null,
           notes: data.notes ?? null,
+          isInstallmentDebt,
+          installments: isInstallmentDebt ? (data.installments ?? null) : null,
+          installmentAmount,
+          paidInstallments: 0,
         },
       });
     }
@@ -148,11 +156,57 @@ export const loanService = {
     const balance = Number(loan.currentBalance);
     const now = new Date();
 
-    // ── BOLETO: pagamento simples, sem amortização ──────────────────────────
+    // ── BOLETO: pagamento ──────────────────────────────────────────────────
     if (loan.type === 'BOLETO') {
       const categoryId = await resolveCategoryId(loan.categoryId, userId);
       if (!categoryId) return null;
 
+      // Dívida parcelada: paga uma parcela de cada vez
+      if (loan.isInstallmentDebt && loan.installments && loan.installmentAmount) {
+        const installmentAmount = Number(loan.installmentAmount);
+        const newPaidInstallments = loan.paidInstallments + 1;
+        const newBalance = Math.max(0, balance - installmentAmount);
+        const isCompleted = newPaidInstallments >= loan.installments;
+        const nextDueDate = addMonths(loan.dueDate!, 1);
+
+        const [payment] = await prisma.$transaction([
+          prisma.loanPayment.create({
+            data: {
+              loanId: id,
+              date: now,
+              type: 'FULL',
+              amount: installmentAmount,
+              interestAmount: 0,
+              principalAmount: installmentAmount,
+              balanceBefore: balance,
+              balanceAfter: newBalance,
+            },
+          }),
+          prisma.loan.update({
+            where: { id },
+            data: {
+              currentBalance: newBalance,
+              totalPaid: Number(loan.totalPaid) + installmentAmount,
+              paidInstallments: newPaidInstallments,
+              isActive: !isCompleted,
+              ...(!isCompleted && { dueDate: nextDueDate }),
+            },
+          }),
+          prisma.transaction.create({
+            data: {
+              userId,
+              categoryId,
+              description: `Parcela ${newPaidInstallments}/${loan.installments} — ${loan.name}`,
+              amount: -installmentAmount,
+              type: 'EXPENSE',
+              date: now,
+            },
+          }),
+        ]);
+        return payment;
+      }
+
+      // Boleto simples: pagamento único
       const [payment] = await prisma.$transaction([
         prisma.loanPayment.create({
           data: {

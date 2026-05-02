@@ -241,6 +241,8 @@ model Loan {
   installmentAmount Decimal?  // calculado ou informado
   totalPaid         Decimal   @default(0)
   isActive          Boolean   @default(true)
+  isInstallmentDebt Boolean   @default(false)
+  paidInstallments  Int       @default(0)
   categoryId        Int?
   notes             String?
   createdAt         DateTime  @default(now())

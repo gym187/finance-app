@@ -60,9 +60,17 @@ function LoanCard({ loan, onPay, onEdit, onDelete, onHistory }: {
             <div className="flex items-center gap-2 flex-wrap">
               <p className="font-semibold">{loan.name}</p>
               {loan.type === 'BOLETO' ? (
-                overdue
-                  ? <Badge variant="destructive" className="text-xs">Vencido</Badge>
-                  : <Badge variant="outline" className="text-xs">Vence {nextDueLabel(loan)}</Badge>
+                <>
+                  {loan.isInstallmentDebt && loan.installments && (
+                    <Badge variant="secondary" className="text-xs">
+                      Parcela {Math.min(loan.paidInstallments + 1, loan.installments)}/{loan.installments}
+                    </Badge>
+                  )}
+                  {overdue
+                    ? <Badge variant="destructive" className="text-xs">Vencida</Badge>
+                    : <Badge variant="outline" className="text-xs">Vence {nextDueLabel(loan)}</Badge>
+                  }
+                </>
               ) : (
                 <Badge variant="secondary" className="text-xs">{loan.interestRate}% a.m.</Badge>
               )}
@@ -78,9 +86,9 @@ function LoanCard({ loan, onPay, onEdit, onDelete, onHistory }: {
           </div>
           <div className="flex gap-1 flex-wrap">
             <Button size="sm" className="h-7 px-2 text-xs" onClick={onPay}>
-              {loan.type === 'BOLETO' ? 'Pagar' : 'Pagar parcela'}
+              {loan.type === 'BOLETO' && loan.isInstallmentDebt ? 'Pagar parcela' : loan.type === 'BOLETO' ? 'Pagar' : 'Pagar parcela'}
             </Button>
-            {loan.type !== 'BOLETO' && (
+            {(loan.type !== 'BOLETO' || loan.isInstallmentDebt) && (
               <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={onHistory}>
                 <History className="h-3 w-3 mr-1" />
                 Histórico
@@ -95,8 +103,37 @@ function LoanCard({ loan, onPay, onEdit, onDelete, onHistory }: {
           </div>
         </div>
 
-        {/* Boleto: só valor */}
-        {loan.type === 'BOLETO' ? (
+        {/* Boleto parcelado: progresso + valores */}
+        {loan.type === 'BOLETO' && loan.isInstallmentDebt && loan.installments ? (
+          <>
+            <div className="space-y-1 mb-3">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{loan.paidInstallments} de {loan.installments} parcelas pagas</span>
+                <span>{((loan.paidInstallments / loan.installments) * 100).toFixed(0)}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${(loan.paidInstallments / loan.installments) * 100}%` }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 p-3 text-center text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Valor parcela</p>
+                <p className="font-semibold">{formatBRL(loan.installmentAmount ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Total pago</p>
+                <p className="font-semibold text-green-600">{formatBRL(loan.totalPaid)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Restante</p>
+                <p className="font-semibold text-red-500">{formatBRL(loan.currentBalance)}</p>
+              </div>
+            </div>
+          </>
+        ) : loan.type === 'BOLETO' ? (
           <div className="rounded-lg bg-muted/40 p-3 text-center">
             <p className="text-xs text-muted-foreground mb-0.5">Valor</p>
             <p className="text-xl font-bold text-red-500">{formatBRL(loan.currentBalance)}</p>
@@ -302,7 +339,7 @@ export default function LoansPage() {
       {inactive.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-            {activeTab === 'BOLETO' ? 'Boletos pagos' : activeTab === 'CREDIT_CARD' ? 'Faturas quitadas' : 'Empréstimos quitados'} ({inactive.length})
+            {activeTab === 'BOLETO' ? 'Boletos/Dívidas quitadas' : activeTab === 'CREDIT_CARD' ? 'Faturas quitadas' : 'Empréstimos quitados'} ({inactive.length})
           </h3>
           <div className="space-y-2">
             {inactive.map((loan) => (
@@ -313,8 +350,10 @@ export default function LoansPage() {
                     <p className="text-xs text-muted-foreground">Total pago: {formatBRL(loan.totalPaid)}</p>
                   </div>
                   <div className="flex gap-2 items-center">
-                    <Badge variant="secondary">Pago</Badge>
-                    {loan.type !== 'BOLETO' && (
+                    <Badge variant="secondary">
+                      {loan.isInstallmentDebt ? 'Quitada' : 'Pago'}
+                    </Badge>
+                    {(loan.type !== 'BOLETO' || loan.isInstallmentDebt) && (
                       <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDrawer({ open: true, loan })}>
                         <History className="h-3 w-3" />
                       </Button>

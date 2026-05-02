@@ -13,6 +13,7 @@ export const createLoanSchema = z.object({
   installments: z.number().int().positive().optional(),
   // BOLETO
   dueDate: z.string().datetime().optional(),
+  isInstallmentDebt: z.boolean().optional(),
   notes: z.string().max(500).optional(),
 });
 
