@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, RefreshCw, Target } from 'lucide-react';
+import { useState } from 'react';
+import { Plus, RefreshCw, Target, Check, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InvestmentSummaryCards } from '@/components/investments/InvestmentSummaryCards';
@@ -9,26 +9,34 @@ import { AllocationChart } from '@/components/investments/AllocationChart';
 import { HoldingsTable } from '@/components/investments/HoldingsTable';
 import { InvestmentModal } from '@/components/investments/InvestmentModal';
 import { useInvestmentSummary, useInvestmentMutations } from '@/hooks/useInvestments';
+import { useSettings, useUpdateSettings } from '@/hooks/useSettings';
 import { formatBRL, formatPercent } from '@/lib/formatters';
 import type { InvestmentHolding } from '@/hooks/useInvestments';
 
 export default function InvestmentsPage() {
   const { data: summary, isLoading, refetch } = useInvestmentSummary();
   const { create, update, remove } = useInvestmentMutations();
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingHolding, setEditingHolding] = useState<InvestmentHolding | null>(null);
+  const [editingTarget, setEditingTarget] = useState(false);
   const [targetInput, setTargetInput] = useState('');
 
-  useEffect(() => {
-    setTargetInput(localStorage.getItem('investmentTarget') ?? '');
-  }, []);
+  const savedTarget = settings?.investmentTarget ? Number(settings.investmentTarget) : 0;
+  const targetAmount = editingTarget ? (parseFloat(targetInput) || 0) : savedTarget;
 
-  useEffect(() => {
-    localStorage.setItem('investmentTarget', targetInput);
-  }, [targetInput]);
+  const handleStartEditTarget = () => {
+    setTargetInput(savedTarget > 0 ? String(savedTarget) : '');
+    setEditingTarget(true);
+  };
 
-  const targetAmount = parseFloat(targetInput) || 0;
+  const handleSaveTarget = async () => {
+    const value = parseFloat(targetInput) || null;
+    await updateSettings.mutateAsync({ investmentTarget: value });
+    setEditingTarget(false);
+  };
 
   const handleOpenNew = () => {
     setEditingHolding(null);
@@ -86,18 +94,36 @@ export default function InvestmentsPage() {
             <Target className="h-4 w-4 text-primary" />
             Meta de Patrimônio
           </div>
-          <div className="flex items-center gap-2 flex-1 min-w-[180px] max-w-xs">
-            <span className="text-sm text-muted-foreground">R$</span>
-            <Input
-              type="number"
-              step="1000"
-              min="0"
-              placeholder="Ex: 100000"
-              value={targetInput}
-              onChange={(e) => setTargetInput(e.target.value)}
-              className="h-8 text-sm"
-            />
-          </div>
+
+          {editingTarget ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">R$</span>
+              <Input
+                type="number"
+                step="1000"
+                min="0"
+                placeholder="Ex: 100000"
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveTarget()}
+                autoFocus
+                className="h-8 w-40 text-sm"
+              />
+              <Button size="sm" className="h-8 px-3" onClick={handleSaveTarget} disabled={updateSettings.isPending}>
+                <Check className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold font-[family-name:var(--font-roboto-mono)]">
+                {savedTarget > 0 ? formatBRL(savedTarget) : <span className="text-muted-foreground">Não definida</span>}
+              </span>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleStartEditTarget}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
+
           {targetAmount > 0 && summary && (
             <div className="flex flex-1 flex-col gap-1 min-w-[200px]">
               <div className="flex justify-between text-xs text-muted-foreground">

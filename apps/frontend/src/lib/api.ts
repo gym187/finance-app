@@ -260,6 +260,16 @@ class ApiClient {
       this.request<ApiResponse<unknown>>(`/goals/${id}`, { method: 'DELETE' }),
   };
 
+  // ─── Settings ────────────────────────────────────────────────────────────
+  settings = {
+    get: () => this.request<ApiResponse<unknown>>('/settings'),
+    update: (data: { investmentTarget?: number | null }) =>
+      this.request<ApiResponse<unknown>>('/settings', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+  };
+
   // ─── Exchange ─────────────────────────────────────────────────────────────
   exchange = {
     rates: () => this.request<ApiResponse<{ rates: Record<string, number>; currencies: string[] }>>('/exchange/rates'),
