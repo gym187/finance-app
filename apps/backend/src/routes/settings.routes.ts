@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { settingsController } from '../controllers/settings.controller';
-import { authMiddleware } from '../middleware/auth.middleware';
+import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
-router.use(authMiddleware);
+router.use(authenticate);
 router.get('/', settingsController.get);
 router.patch('/', settingsController.update);
 
