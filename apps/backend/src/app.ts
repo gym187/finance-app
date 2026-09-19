@@ -12,6 +12,9 @@ import { errorHandler } from './middleware/error.middleware';
 
 const app = express();
 
+// Trust Cloudflare/reverse-proxy (required for rate-limit and IP detection)
+app.set('trust proxy', 1);
+
 // ─── Security headers ─────────────────────────────────────────────────────────
 app.use(helmet());
 
