@@ -3,16 +3,19 @@
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { formatBRL, formatPercent } from '@/lib/formatters';
+import { formatBRL } from '@/lib/formatters';
 import type { CategoryData } from '@finance-app/shared';
 
-function PieTooltip({ active, payload }: { active?: boolean; payload?: { name: string; value: number; payload: { color: string } }[] }) {
+function PieTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: { name: string; value: number; payload: { color: string } }[];
+}) {
   if (!active || !payload?.length) return null;
   const item = payload[0];
   return (
-    <div className="rounded-lg border bg-popover px-3 py-2 shadow-lg text-popover-foreground text-sm">
+    <div className="rounded-lg border bg-popover px-3 py-2 shadow-lg text-popover-foreground text-xs">
       <div className="flex items-center gap-2">
-        <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.payload.color }} />
+        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.payload.color }} />
         <span className="font-medium">{item.name}</span>
       </div>
       <p className="mt-0.5 font-semibold">{formatBRL(item.value)}</p>
@@ -27,17 +30,19 @@ interface CategoryPieChartProps {
 
 export function CategoryPieChart({ data, isLoading }: CategoryPieChartProps) {
   const hasData = data && data.length > 0;
-  const total = data?.reduce((s, d) => s + d.value, 0) ?? 0;
 
   return (
     <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle className="text-base">Gastos por Categoria</CardTitle>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-base">Despesas por categoria</CardTitle>
+        {!isLoading && hasData && (
+          <span className="text-xs text-muted-foreground">{data.length} {data.length === 1 ? 'categoria' : 'categorias'}</span>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {isLoading ? (
           <>
-            <Skeleton className="mx-auto h-44 w-44 rounded-full" />
+            <Skeleton className="mx-auto h-52 w-52 rounded-full" />
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-4 w-full" />
@@ -45,20 +50,19 @@ export function CategoryPieChart({ data, isLoading }: CategoryPieChartProps) {
             </div>
           </>
         ) : !hasData ? (
-          <div className="flex h-44 items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-52 items-center justify-center text-sm text-muted-foreground">
             Nenhum gasto registrado este mês
           </div>
         ) : (
           <>
-            {/* Donut chart */}
-            <ResponsiveContainer width="100%" height={180}>
+            <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
                   data={data}
                   cx="50%"
                   cy="50%"
-                  innerRadius={52}
-                  outerRadius={80}
+                  innerRadius={60}
+                  outerRadius={90}
                   paddingAngle={2}
                   dataKey="value"
                 >
@@ -70,23 +74,21 @@ export function CategoryPieChart({ data, isLoading }: CategoryPieChartProps) {
               </PieChart>
             </ResponsiveContainer>
 
-            {/* Category list */}
             <div className="space-y-2">
-              {data.slice(0, 6).map((cat) => (
-                <div key={cat.name} className="flex items-center gap-2 text-sm">
+              {data.slice(0, 8).map((cat) => (
+                <div key={cat.name} className="flex items-center gap-3 text-sm">
                   <span
-                    className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+                    className="h-4 w-1 flex-shrink-0 rounded-full"
                     style={{ backgroundColor: cat.color }}
                   />
                   <span className="flex-1 truncate text-muted-foreground">{cat.name}</span>
-                  <span className="font-medium">{formatBRL(cat.value)}</span>
-                  <span className="w-10 text-right text-xs text-muted-foreground">
-                    {total > 0 ? formatPercent((cat.value / total) * 100, 0) : '0%'}
+                  <span className="font-medium font-[family-name:var(--font-roboto-mono)]">
+                    {formatBRL(cat.value)}
                   </span>
                 </div>
               ))}
-              {data.length > 6 && (
-                <p className="text-xs text-muted-foreground">+{data.length - 6} categorias</p>
+              {data.length > 8 && (
+                <p className="text-xs text-muted-foreground">+{data.length - 8} categorias</p>
               )}
             </div>
           </>

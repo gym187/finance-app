@@ -60,7 +60,7 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
       navigator.serviceWorker.register('/sw.js').then(async (reg) => {
         if (Notification.permission === 'granted') {
           await subscribeToPush(reg);

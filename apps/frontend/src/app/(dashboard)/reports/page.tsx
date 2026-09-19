@@ -16,7 +16,6 @@ import { useBudgets } from '@/hooks/useBudgets';
 import { formatBRL } from '@/lib/formatters';
 import { api } from '@/lib/api';
 import { exportReportPDF } from '@/lib/exportPDF';
-import { WealthProjection } from '@/components/reports/WealthProjection';
 import { TOOLTIP_CURSOR_STYLE } from '@/lib/chartUtils';
 import type { Transaction } from '@finance-app/shared';
 
@@ -250,9 +249,6 @@ export default function ReportsPage() {
           </p>
         </CardContent>
       </Card>
-
-      {/* Wealth projection */}
-      <WealthProjection />
 
       {/* Preview modal */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>

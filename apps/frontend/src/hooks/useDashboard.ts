@@ -7,6 +7,6 @@ export function useDashboard() {
     queryKey: ['dashboard'],
     queryFn: () => api.dashboard.get(),
     select: (res) => (res as { success: boolean; data: DashboardData }).data,
-    refetchInterval: 5 * 60 * 1000, // auto-refresh every 5 minutes
+    refetchInterval: 5 * 60 * 1000,
   });
 }

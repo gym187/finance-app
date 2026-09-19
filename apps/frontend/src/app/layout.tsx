@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Roboto_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/providers/Providers';
 
 const inter = Inter({ subsets: ['latin'] });
+
+const robotoMono = Roboto_Mono({
+  subsets: ['latin'],
+  variable: '--font-roboto-mono',
+});
 
 export const metadata: Metadata = {
   title: 'AppFin — Controle Financeiro',
@@ -16,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#22c55e',
+  themeColor: '#D08A45',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -26,7 +31,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={`${inter.className} ${robotoMono.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

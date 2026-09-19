@@ -1,25 +1,37 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, CreditCard, TrendingDown, Calendar, History, FileText, Landmark } from 'lucide-react';
+import { Plus, TrendingDown, Wallet, Calendar, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table';
 import { useLoans, useLoanSummary, useLoanMutations } from '@/hooks/useLoans';
 import type { Loan, LoanType } from '@/hooks/useLoans';
 import { formatBRL } from '@/lib/formatters';
 import { LoanModal } from '@/components/loans/LoanModal';
 import { PayModal } from '@/components/loans/PayModal';
-import { LoanPaymentsDrawer } from '@/components/loans/LoanPaymentsDrawer';
+import { LoanDetailDrawer } from '@/components/loans/LoanDetailDrawer';
+import { cn } from '@/lib/utils';
 
-const TAB_CONFIG: { type: LoanType; label: string; icon: React.ReactNode; emptyText: string; emptyDesc: string }[] = [
-  { type: 'LOAN',        label: 'Empréstimos',       icon: <Landmark className="h-4 w-4" />,  emptyText: 'Nenhum empréstimo ativo',       emptyDesc: 'Cadastre um empréstimo para acompanhar sua evolução' },
-  { type: 'CREDIT_CARD', label: 'Cartões',            icon: <CreditCard className="h-4 w-4" />, emptyText: 'Nenhum cartão cadastrado',       emptyDesc: 'Cadastre uma fatura de cartão para controlar os juros' },
-  { type: 'BOLETO',      label: 'Boletos',            icon: <FileText className="h-4 w-4" />,   emptyText: 'Nenhum boleto pendente',         emptyDesc: 'Cadastre boletos para não perder vencimentos' },
+type Filter = 'ALL' | LoanType;
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'ALL',         label: 'Todos' },
+  { value: 'LOAN',        label: 'Empréstimos' },
+  { value: 'CREDIT_CARD', label: 'Cartões' },
+  { value: 'BOLETO',      label: 'Boletos' },
 ];
 
-function nextDueLabel(loan: Loan): string {
+const TYPE_LABELS: Record<string, string> = {
+  LOAN: 'Empréstimo',
+  CREDIT_CARD: 'Cartão',
+  BOLETO: 'Boleto',
+};
+
+function nextDueLabel(loan: Loan) {
   if (loan.dueDate) {
     return new Date(loan.dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' });
   }
@@ -29,155 +41,19 @@ function nextDueLabel(loan: Loan): string {
   return due.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-function progressPct(loan: Loan): number {
+function progressPct(loan: Loan) {
+  if (loan.isInstallmentDebt && loan.installments) {
+    return (loan.paidInstallments / loan.installments) * 100;
+  }
   if (loan.principalAmount <= 0) return 0;
-  const principalPaid = loan.principalAmount - loan.currentBalance;
-  return Math.min(100, Math.max(0, (principalPaid / loan.principalAmount) * 100));
+  return Math.min(100, ((loan.principalAmount - loan.currentBalance) / loan.principalAmount) * 100);
 }
 
-function isOverdue(loan: Loan): boolean {
+function isOverdue(loan: Loan) {
   if (!loan.dueDate) return false;
   const dueDay = loan.dueDate.slice(0, 10);
   const todayDay = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
   return dueDay < todayDay;
-}
-
-function LoanCard({ loan, onPay, onEdit, onDelete, onHistory }: {
-  loan: Loan;
-  onPay: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-  onHistory: () => void;
-}) {
-  const pct = progressPct(loan);
-  const interest = loan.currentBalance * (loan.interestRate / 100);
-  const installment = loan.installmentAmount ?? (loan.currentBalance + interest);
-  const overdue = isOverdue(loan);
-
-  return (
-    <Card className={`overflow-hidden ${overdue ? 'border-red-300' : ''}`}>
-      <CardContent className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold">{loan.name}</p>
-              {loan.type === 'BOLETO' ? (
-                <>
-                  {loan.isInstallmentDebt && loan.installments && (
-                    <Badge variant="secondary" className="text-xs">
-                      Parcela {Math.min(loan.paidInstallments + 1, loan.installments)}/{loan.installments}
-                    </Badge>
-                  )}
-                  {overdue
-                    ? <Badge variant="destructive" className="text-xs">Vencida</Badge>
-                    : <Badge variant="outline" className="text-xs">Vence {nextDueLabel(loan)}</Badge>
-                  }
-                </>
-              ) : (
-                <Badge variant="secondary" className="text-xs">{loan.interestRate}% a.m.</Badge>
-              )}
-              {loan.type === 'CREDIT_CARD' && loan.closingDay && (
-                <Badge variant="outline" className="text-xs">Fecha dia {loan.closingDay}</Badge>
-              )}
-            </div>
-            {loan.type !== 'BOLETO' && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Vence todo dia {loan.dueDayOfMonth} · Próximo: {nextDueLabel(loan)}
-              </p>
-            )}
-          </div>
-          <div className="flex gap-1 flex-wrap">
-            <Button size="sm" className="h-7 px-2 text-xs" onClick={onPay}>
-              {loan.type === 'BOLETO' && loan.isInstallmentDebt ? 'Pagar parcela' : loan.type === 'BOLETO' ? 'Pagar' : 'Pagar parcela'}
-            </Button>
-            {(loan.type !== 'BOLETO' || loan.isInstallmentDebt) && (
-              <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={onHistory}>
-                <History className="h-3 w-3 mr-1" />
-                Histórico
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={onEdit}>
-              Editar
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-red-500" onClick={onDelete}>
-              Excluir
-            </Button>
-          </div>
-        </div>
-
-        {/* Boleto parcelado: progresso + valores */}
-        {loan.type === 'BOLETO' && loan.isInstallmentDebt && loan.installments ? (
-          <>
-            <div className="space-y-1 mb-3">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{loan.paidInstallments} de {loan.installments} parcelas pagas</span>
-                <span>{((loan.paidInstallments / loan.installments) * 100).toFixed(0)}%</span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${(loan.paidInstallments / loan.installments) * 100}%` }}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 p-3 text-center text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Valor parcela</p>
-                <p className="font-semibold">{formatBRL(loan.installmentAmount ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Total pago</p>
-                <p className="font-semibold text-green-600">{formatBRL(loan.totalPaid)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Restante</p>
-                <p className="font-semibold text-red-500">{formatBRL(loan.currentBalance)}</p>
-              </div>
-            </div>
-          </>
-        ) : loan.type === 'BOLETO' ? (
-          <div className="rounded-lg bg-muted/40 p-3 text-center">
-            <p className="text-xs text-muted-foreground mb-0.5">Valor</p>
-            <p className="text-xl font-bold text-red-500">{formatBRL(loan.currentBalance)}</p>
-          </div>
-        ) : (
-          <>
-            {/* Barra de progresso */}
-            <div className="space-y-1 mb-3">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Amortizado: {formatBRL(loan.principalAmount - loan.currentBalance)}</span>
-                <span>Principal: {formatBRL(loan.principalAmount)}</span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
-              </div>
-              <p className="text-xs text-muted-foreground">{pct.toFixed(1)}% do principal quitado</p>
-            </div>
-
-            {/* Números chave */}
-            <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 p-3 text-center text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Saldo atual</p>
-                <p className="font-semibold text-red-500">{formatBRL(loan.currentBalance)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Próx. parcela</p>
-                <p className="font-semibold">{formatBRL(installment)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Juros/mês</p>
-                <p className="font-semibold text-amber-600">{formatBRL(interest)}</p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {loan.notes && (
-          <p className="mt-2 text-xs text-muted-foreground border-t pt-2">{loan.notes}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
 }
 
 export default function LoansPage() {
@@ -185,22 +61,13 @@ export default function LoansPage() {
   const { data: summary, isLoading: loadingSummary } = useLoanSummary();
   const { create, update, pay, remove } = useLoanMutations();
 
-  const [activeTab, setActiveTab] = useState<LoanType>('LOAN');
+  const [filter, setFilter] = useState<Filter>('ALL');
   const [loanModal, setLoanModal] = useState<{ open: boolean; editing: Loan | null }>({ open: false, editing: null });
   const [payModal, setPayModal] = useState<{ open: boolean; loan: Loan | null }>({ open: false, loan: null });
   const [drawer, setDrawer] = useState<{ open: boolean; loan: Loan | null }>({ open: false, loan: null });
 
-  const tabLoans = loans.filter((l) => (l.type ?? 'LOAN') === activeTab);
-  const active = tabLoans.filter((l) => l.isActive);
-  const inactive = tabLoans.filter((l) => !l.isActive);
-
-  const counts = {
-    LOAN: loans.filter((l) => (l.type ?? 'LOAN') === 'LOAN' && l.isActive).length,
-    CREDIT_CARD: loans.filter((l) => l.type === 'CREDIT_CARD' && l.isActive).length,
-    BOLETO: loans.filter((l) => l.type === 'BOLETO' && l.isActive).length,
-  };
-
-  const currentTab = TAB_CONFIG.find((t) => t.type === activeTab)!;
+  const active = loans.filter((l) => l.isActive && (filter === 'ALL' || (l.type ?? 'LOAN') === filter));
+  const inactive = loans.filter((l) => !l.isActive && (filter === 'ALL' || (l.type ?? 'LOAN') === filter));
 
   const handleSubmitLoan = async (data: unknown) => {
     if (loanModal.editing) {
@@ -215,15 +82,22 @@ export default function LoansPage() {
     if (!payModal.loan) return;
     await pay.mutateAsync({ id: payModal.loan.id, type });
     setPayModal({ open: false, loan: null });
+    // Atualiza o drawer se estiver aberto para o mesmo loan
+    if (drawer.loan?.id === payModal.loan.id) {
+      setDrawer((prev) => ({ ...prev, loan: { ...prev.loan!, currentBalance: 0 } }));
+    }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (loan: Loan) => {
     if (!confirm('Excluir este registro e todo o histórico?')) return;
-    await remove.mutateAsync(id);
+    await remove.mutateAsync(loan.id);
+    if (drawer.loan?.id === loan.id) setDrawer({ open: false, loan: null });
   };
+
+  const openDrawer = (loan: Loan) => setDrawer({ open: true, loan });
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -236,137 +110,202 @@ export default function LoansPage() {
         </Button>
       </div>
 
-      {/* Summary cards */}
-      {loadingSummary ? (
-        <div className="grid gap-4 sm:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-5"><Skeleton className="h-4 w-24 mb-2" /><Skeleton className="h-7 w-32" /></CardContent></Card>
-          ))}
+      {/* KPI bar */}
+      <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="flex divide-x">
+          {loadingSummary ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex-1 px-5 py-4 space-y-1.5">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-6 w-32" />
+              </div>
+            ))
+          ) : (
+            <>
+              <div className="flex-1 px-5 py-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                  <TrendingDown className="h-3 w-3" />
+                  Total em dívida
+                </div>
+                <p className="text-xl font-bold text-expense font-[family-name:var(--font-roboto-mono)]">
+                  {formatBRL(summary?.totalDebt ?? 0)}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{summary?.activeCount ?? 0} ativo{(summary?.activeCount ?? 0) !== 1 ? 's' : ''}</p>
+              </div>
+              <div className="flex-1 px-5 py-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                  <Wallet className="h-3 w-3" />
+                  Total já pago
+                </div>
+                <p className="text-xl font-bold text-income font-[family-name:var(--font-roboto-mono)]">
+                  {formatBRL(summary?.totalPaid ?? 0)}
+                </p>
+              </div>
+              <div className="flex-1 px-5 py-4">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground mb-1">
+                  <Calendar className="h-3 w-3" />
+                  Próximo vencimento
+                </div>
+                {summary?.nextDue[0] ? (
+                  <>
+                    <p className="text-xl font-bold font-[family-name:var(--font-roboto-mono)]">
+                      {new Date(summary.nextDue[0].dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground truncate">{summary.nextDue[0].name}</p>
+                  </>
+                ) : (
+                  <p className="text-xl font-bold text-muted-foreground">—</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <TrendingDown className="h-4 w-4" />
-                Total em dívida
-              </div>
-              <p className="text-2xl font-bold text-red-500">{formatBRL(summary?.totalDebt ?? 0)}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{summary?.activeCount ?? 0} ativos</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <CreditCard className="h-4 w-4" />
-                Total já pago
-              </div>
-              <p className="text-2xl font-bold text-green-600">{formatBRL(summary?.totalPaid ?? 0)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <Calendar className="h-4 w-4" />
-                Próximo vencimento
-              </div>
-              {summary?.nextDue[0] ? (
-                <>
-                  <p className="text-lg font-bold">{new Date(summary.nextDue[0].dueDate).toLocaleDateString('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit' })}</p>
-                  <p className="text-xs text-muted-foreground truncate">{summary.nextDue[0].name}</p>
-                </>
-              ) : (
-                <p className="text-lg font-bold text-muted-foreground">—</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1">
-        {TAB_CONFIG.map((tab) => (
+      {/* Filtros */}
+      <div className="flex items-center gap-1">
+        {FILTERS.map((f) => (
           <button
-            key={tab.type}
-            onClick={() => setActiveTab(tab.type)}
-            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-xs sm:text-sm font-medium transition-colors ${
-              activeTab === tab.type
-                ? 'bg-background shadow-sm text-foreground'
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={cn(
+              'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+              filter === f.value
+                ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.icon}
-            <span className="hidden sm:inline">{tab.label}</span>
-            <span className="sm:hidden">{tab.label.split(' ')[0]}</span>
-            {counts[tab.type] > 0 && (
-              <span className={`rounded-full px-1.5 py-0.5 text-xs ${activeTab === tab.type ? 'bg-primary text-primary-foreground' : 'bg-muted-foreground/20'}`}>
-                {counts[tab.type]}
-              </span>
             )}
+          >
+            {f.label}
           </button>
         ))}
       </div>
 
-      {/* Lista da aba ativa */}
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-5 space-y-3"><Skeleton className="h-5 w-48" /><Skeleton className="h-3 w-full" /><Skeleton className="h-4 w-36" /></CardContent></Card>
-          ))}
-        </div>
-      ) : active.length === 0 ? (
-        <Card>
-          <CardContent className="p-10 text-center text-muted-foreground">
-            <div className="mx-auto mb-3 opacity-30 flex justify-center">{currentTab.icon}</div>
-            <p className="font-medium">{currentTab.emptyText}</p>
-            <p className="text-sm mt-1">{currentTab.emptyDesc}</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {active.map((loan) => (
-            <LoanCard
-              key={loan.id}
-              loan={loan}
-              onPay={() => setPayModal({ open: true, loan })}
-              onEdit={() => setLoanModal({ open: true, editing: loan })}
-              onDelete={() => handleDelete(loan.id)}
-              onHistory={() => setDrawer({ open: true, loan })}
-            />
-          ))}
-        </div>
-      )}
+      {/* Tabela */}
+      <div className="rounded-xl border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-xs uppercase tracking-wide">Nome</TableHead>
+              <TableHead className="hidden sm:table-cell text-xs uppercase tracking-wide">Tipo</TableHead>
+              <TableHead className="hidden md:table-cell text-xs uppercase tracking-wide">Vencimento</TableHead>
+              <TableHead className="hidden md:table-cell text-xs uppercase tracking-wide">Parcela</TableHead>
+              <TableHead className="text-right text-xs uppercase tracking-wide">Saldo devedor</TableHead>
+              <TableHead className="hidden lg:table-cell w-32 text-xs uppercase tracking-wide">Progresso</TableHead>
+              <TableHead className="w-10" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <TableRow key={i}>
+                  {Array.from({ length: 7 }).map((_, j) => (
+                    <TableCell key={j}><Skeleton className="h-4 w-full" /></TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : active.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                  Nenhuma dívida ativa
+                </TableCell>
+              </TableRow>
+            ) : (
+              active.map((loan) => {
+                const overdue = isOverdue(loan);
+                const pct = progressPct(loan);
+                const interest = loan.currentBalance * (loan.interestRate / 100);
+                const installment = loan.installmentAmount ?? (loan.currentBalance + interest);
 
-      {/* Inativos/pagos */}
+                return (
+                  <TableRow
+                    key={loan.id}
+                    className={cn('cursor-pointer hover:bg-muted/50', overdue && 'bg-destructive/5 hover:bg-destructive/10')}
+                    onClick={() => openDrawer(loan)}
+                  >
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-sm">{loan.name}</p>
+                        {overdue && (
+                          <p className="text-xs text-destructive">Vencida</p>
+                        )}
+                        {loan.isInstallmentDebt && loan.installments && (
+                          <p className="text-xs text-muted-foreground">
+                            Parcela {Math.min(loan.paidInstallments + 1, loan.installments)}/{loan.installments}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="secondary" className="text-xs">{TYPE_LABELS[loan.type ?? 'LOAN']}</Badge>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
+                      {nextDueLabel(loan)}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm font-medium font-[family-name:var(--font-roboto-mono)]">
+                      {formatBRL(installment)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="text-sm font-semibold text-expense font-[family-name:var(--font-roboto-mono)]">
+                        {formatBRL(loan.currentBalance)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <div className="space-y-1">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">{pct.toFixed(0)}%</p>
+                      </div>
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDelete(loan)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Quitadas */}
       {inactive.length > 0 && (
         <div>
-          <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-            {activeTab === 'BOLETO' ? 'Boletos/Dívidas quitadas' : activeTab === 'CREDIT_CARD' ? 'Faturas quitadas' : 'Empréstimos quitados'} ({inactive.length})
-          </h3>
-          <div className="space-y-2">
-            {inactive.map((loan) => (
-              <Card key={loan.id} className="opacity-60">
-                <CardContent className="p-4 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-sm">{loan.name}</p>
-                    <p className="text-xs text-muted-foreground">Total pago: {formatBRL(loan.totalPaid)}</p>
-                  </div>
-                  <div className="flex gap-2 items-center">
-                    <Badge variant="secondary">
-                      {loan.isInstallmentDebt ? 'Quitada' : 'Pago'}
-                    </Badge>
-                    {(loan.type !== 'BOLETO' || loan.isInstallmentDebt) && (
-                      <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setDrawer({ open: true, loan })}>
-                        <History className="h-3 w-3" />
+          <p className="mb-3 text-sm font-semibold text-muted-foreground">Quitadas ({inactive.length})</p>
+          <div className="rounded-xl border overflow-x-auto opacity-60">
+            <Table>
+              <TableBody>
+                {inactive.map((loan) => (
+                  <TableRow key={loan.id} className="cursor-pointer hover:bg-muted/50" onClick={() => openDrawer(loan)}>
+                    <TableCell className="font-medium text-sm">{loan.name}</TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Badge variant="secondary" className="text-xs">{TYPE_LABELS[loan.type ?? 'LOAN']}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      Total pago: {formatBRL(loan.totalPaid)}
+                    </TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDelete(loan)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
-                    )}
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-red-500" onClick={() => handleDelete(loan.id)}>
-                      Excluir
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}
@@ -386,14 +325,14 @@ export default function LoansPage() {
         loan={payModal.loan}
         isLoading={pay.isPending}
       />
-      {drawer.loan && (
-        <LoanPaymentsDrawer
-          open={drawer.open}
-          onClose={() => setDrawer({ open: false, loan: null })}
-          loanId={drawer.loan.id}
-          loanName={drawer.loan.name}
-        />
-      )}
+      <LoanDetailDrawer
+        open={drawer.open}
+        loan={drawer.loan}
+        onClose={() => setDrawer({ open: false, loan: null })}
+        onEdit={(loan) => { setDrawer({ open: false, loan: null }); setLoanModal({ open: true, editing: loan }); }}
+        onDelete={handleDelete}
+        onPay={(loan) => setPayModal({ open: true, loan })}
+      />
     </div>
   );
 }

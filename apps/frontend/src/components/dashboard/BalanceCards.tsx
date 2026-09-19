@@ -41,7 +41,7 @@ function StatCard({ title, value, isBRL, isPercent, trend, icon, iconBg, isLoadi
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="mt-1 truncate text-xl font-bold sm:text-2xl">{displayValue}</p>
+            <p className="mt-1 truncate text-2xl font-semibold tracking-tight sm:text-[32px] sm:leading-none sm:tracking-[-0.01em]">{displayValue}</p>
             {trend !== undefined && (
               <div className="mt-1 flex items-center gap-1 text-xs">
                 {trend >= 0 ? (

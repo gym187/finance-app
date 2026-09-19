@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Download, Search, Filter, Upload } from 'lucide-react';
+import { Plus, Trash2, Download, Search, Filter, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import { useTags } from '@/hooks/useTags';
 import { useExchangeRates } from '@/hooks/useExchangeRates';
 import { TagSelector } from '@/components/transactions/TagSelector';
 import { formatBRL, formatDate, todayBR } from '@/lib/formatters';
+import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { ImportModal } from '@/components/transactions/ImportModal';
 import type { Transaction, Currency } from '@finance-app/shared';
@@ -160,7 +161,7 @@ export default function TransactionsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -170,35 +171,27 @@ export default function TransactionsPage() {
             className="pl-9"
           />
         </div>
-        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v === 'all' ? '' : v); setPage(1); }}>
-          <SelectTrigger className="w-full sm:w-40">
-            <Filter className="mr-2 h-4 w-4" />
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os tipos</SelectItem>
-            <SelectItem value="INCOME">Entradas</SelectItem>
-            <SelectItem value="EXPENSE">Saídas</SelectItem>
-          </SelectContent>
-        </Select>
-        {tags.length > 0 && (
-          <Select value={tagFilter} onValueChange={(v) => { setTagFilter(v === 'all' ? '' : v); setPage(1); }}>
-            <SelectTrigger className="w-full sm:w-44">
-              <SelectValue placeholder="Filtrar por tag" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as tags</SelectItem>
-              {tags.map((tag) => (
-                <SelectItem key={tag.id} value={String(tag.id)}>
-                  <span className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: tag.color }} />
-                    {tag.name}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex items-center gap-1">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          {[
+            { label: 'Todas', value: '' },
+            { label: 'Receitas', value: 'INCOME' },
+            { label: 'Despesas', value: 'EXPENSE' },
+          ].map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => { setTypeFilter(tab.value); setPage(1); }}
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+                typeFilter === tab.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -206,21 +199,20 @@ export default function TransactionsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Data</TableHead>
-              <TableHead>Descrição</TableHead>
-              <TableHead className="hidden md:table-cell">Categoria</TableHead>
-              <TableHead className="hidden lg:table-cell">Tags</TableHead>
-              <TableHead className="hidden sm:table-cell">Tipo</TableHead>
-              <TableHead className="text-right">Valor</TableHead>
-              <TableHead className="w-16 sm:w-20" />
+              <TableHead className="text-xs uppercase tracking-wide">Data</TableHead>
+              <TableHead className="hidden sm:table-cell text-xs uppercase tracking-wide">Tipo</TableHead>
+              <TableHead className="hidden md:table-cell text-xs uppercase tracking-wide">Categoria</TableHead>
+              <TableHead className="text-xs uppercase tracking-wide">Descrição</TableHead>
+              <TableHead className="text-right text-xs uppercase tracking-wide">Valor</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               Array.from({ length: 8 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 7 }).map((_, j) => (
-                    <TableCell key={j} className={j === 2 ? 'hidden md:table-cell' : j === 3 ? 'hidden lg:table-cell' : j === 4 ? 'hidden sm:table-cell' : ''}>
+                  {Array.from({ length: 6 }).map((_, j) => (
+                    <TableCell key={j} className={j === 1 ? 'hidden sm:table-cell' : j === 2 ? 'hidden md:table-cell' : ''}>
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
                   ))}
@@ -228,48 +220,43 @@ export default function TransactionsPage() {
               ))
             ) : txData?.data?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                   Nenhuma transação encontrada
                 </TableCell>
               </TableRow>
             ) : (
               (txData?.data as unknown as TxWithTags[])?.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="text-muted-foreground text-xs sm:text-sm">
+                <TableRow
+                  key={tx.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => openEdit(tx)}
+                >
+                  <TableCell className="text-muted-foreground text-sm">
                     {formatDate(tx.date)}
                   </TableCell>
-                  <TableCell className="font-medium">{tx.description}</TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    <span className={cn(
+                      'inline-flex rounded-md border px-2 py-0.5 text-xs font-medium',
+                      tx.type === 'INCOME'
+                        ? 'border-income/50 text-income'
+                        : 'border-expense/50 text-expense'
+                    )}>
+                      {tx.type === 'INCOME' ? 'Receita' : 'Despesa'}
+                    </span>
+                  </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <div className="flex items-center gap-2">
                       {tx.category?.color && (
-                        <span className="h-2 w-2 rounded-full" style={{ background: tx.category.color }} />
+                        <span className="h-4 w-0.5 flex-shrink-0 rounded-full" style={{ background: tx.category.color }} />
                       )}
                       <span className="text-sm">{tx.category?.name ?? '—'}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="hidden lg:table-cell">
-                    <div className="flex flex-wrap gap-1">
-                      {tx.tags?.map((tag) => (
-                        <span
-                          key={tag.id}
-                          className="rounded-full px-2 py-0.5 text-xs font-medium"
-                          style={{ background: tag.color + '22', color: tag.color }}
-                        >
-                          {tag.name}
-                        </span>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <Badge variant={tx.type === 'INCOME' ? 'income' : 'expense'}>
-                      {tx.type === 'INCOME' ? 'Entrada' : 'Saída'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
+                  <TableCell className="font-medium">{tx.description || '—'}</TableCell>
+                  <TableCell className="text-right font-semibold tracking-tight font-[family-name:var(--font-roboto-mono)]">
                     <div className="flex flex-col items-end">
-                      <span className={tx.type === 'INCOME' ? 'text-green-600' : 'text-red-600'}>
-                        {tx.type === 'INCOME' ? '+' : '-'}
-                        {formatBRL(Math.abs(tx.amount))}
+                      <span className={tx.type === 'INCOME' ? 'text-income' : 'text-expense'}>
+                        {tx.type === 'INCOME' ? '+' : '-'}{formatBRL(Math.abs(tx.amount))}
                       </span>
                       {tx.currency !== 'BRL' && tx.amountOriginal != null && (
                         <span className="text-xs text-muted-foreground">
@@ -281,19 +268,14 @@ export default function TransactionsPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(tx)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-8 w-8 text-destructive hover:text-destructive"
-                        onClick={() => confirm('Excluir esta transação?') && deleteTx.mutate(tx.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => confirm('Excluir esta transação?') && deleteTx.mutate(tx.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))

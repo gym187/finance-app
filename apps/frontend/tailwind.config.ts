@@ -43,8 +43,9 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
-        income: '#22c55e',
-        expense: '#ef4444',
+        income: '#6FA981',
+        expense: '#CD7C6B',
+        investment: '#7C98CD',
       },
       borderRadius: {
         lg: 'var(--radius)',

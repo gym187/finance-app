@@ -10,7 +10,6 @@ export const dashboardService = {
     const prevMonthStart = startOfMonth(subMonths(now, 1));
     const prevMonthEnd = endOfMonth(subMonths(now, 1));
     const twelveMonthsAgo = startOfMonth(subMonths(now, 11));
-    const currentMonthStr = format(now, 'yyyy-MM');
 
     const [allTime, currentMonthTxs, prevMonthAgg, last12MonthsTxs, budgets] =
       await prisma.$transaction([
@@ -100,12 +99,10 @@ export const dashboardService = {
       } else {
         if (b.type === 'INCOME') spent = totalIncome;
         else if (b.type === 'EXPENSE') spent = totalExpense;
-        else spent = totalExpense; // TOTAL
+        else spent = totalExpense;
       }
-
       const budgeted = Number(b.amount);
       const percentage = budgeted > 0 ? (spent / budgeted) * 100 : 0;
-
       return {
         id: b.id,
         categoryId: b.categoryId,
@@ -135,7 +132,7 @@ export const dashboardService = {
       }
     }
 
-    // ─── Recurring summary for current month ────────────────────────────────
+    // ─── Recurring summary ────────────────────────────────────────────────────
     const activeRecurring = await prisma.recurringTransaction.findMany({
       where: { userId, isActive: true },
       include: { category: true },
@@ -160,7 +157,7 @@ export const dashboardService = {
       categoryColor: r.category.color ?? '#6b7280',
     }));
 
-    // ─── Loans summary ───────────────────────────────────────────────────────
+    // ─── Loans summary ────────────────────────────────────────────────────────
     const activeLoans = await prisma.loan.findMany({
       where: { userId, isActive: true },
       orderBy: { createdAt: 'asc' },
@@ -168,28 +165,19 @@ export const dashboardService = {
     });
 
     const loansWidget = activeLoans.map((l) => {
-      const balance = Number(l.currentBalance);
+      const bal = Number(l.currentBalance);
       const rate = Number(l.interestRate) / 100;
-      const interest = balance * rate;
-      const installment = l.installmentAmount ? Number(l.installmentAmount) : balance + interest;
-
-      // next due date
+      const interest = bal * rate;
+      const installment = l.installmentAmount ? Number(l.installmentAmount) : bal + interest;
       const nowD = new Date();
       let due = new Date(nowD.getFullYear(), nowD.getMonth(), l.dueDayOfMonth);
       if (due <= nowD) due = new Date(nowD.getFullYear(), nowD.getMonth() + 1, l.dueDayOfMonth);
-
-      return {
-        id: l.id,
-        name: l.name,
-        currentBalance: balance,
-        installmentAmount: installment,
-        nextDueDate: due.toISOString(),
-      };
+      return { id: l.id, name: l.name, currentBalance: bal, installmentAmount: installment, nextDueDate: due.toISOString() };
     });
 
     const totalDebt = activeLoans.reduce((s, l) => s + Number(l.currentBalance), 0);
 
-    // ─── Savings goals summary ────────────────────────────────────────────────
+    // ─── Savings goals ────────────────────────────────────────────────────────
     const savingsGoals = await prisma.savingsGoal.findMany({
       where: { userId, isCompleted: false },
       orderBy: { deadline: 'asc' },
