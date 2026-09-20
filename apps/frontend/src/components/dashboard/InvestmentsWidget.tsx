@@ -32,47 +32,47 @@ export function InvestmentsWidget() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* KPIs */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           {isLoading ? (
             Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="space-y-1.5 rounded-lg border p-3">
-                <Skeleton className="h-3 w-16" />
-                <Skeleton className="h-5 w-24" />
+              <div key={i} className="space-y-1.5 rounded-lg border p-2.5">
+                <Skeleton className="h-3 w-12" />
+                <Skeleton className="h-4 w-full" />
               </div>
             ))
           ) : (
             <>
-              <div className="rounded-lg border p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="min-w-0 rounded-lg border p-2.5">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground truncate">
                   Investido
                 </p>
-                <p className="mt-1 text-sm font-bold font-[family-name:var(--font-roboto-mono)]">
+                <p className="mt-1 text-xs font-bold font-[family-name:var(--font-roboto-mono)] truncate">
                   {formatBRL(data?.totalInvested ?? 0)}
                 </p>
               </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="min-w-0 rounded-lg border p-2.5">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground truncate">
                   Valor Atual
                 </p>
-                <p className="mt-1 text-sm font-bold font-[family-name:var(--font-roboto-mono)]">
+                <p className="mt-1 text-xs font-bold font-[family-name:var(--font-roboto-mono)] truncate">
                   {formatBRL(data?.currentValue ?? 0)}
                 </p>
               </div>
               <div className={cn(
-                'rounded-lg border p-3',
+                'min-w-0 rounded-lg border p-2.5',
                 isPositive
                   ? 'border-income/30 bg-income/5'
                   : 'border-expense/30 bg-expense/5'
               )}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground truncate">
                   Retorno
                 </p>
-                <div className="mt-1 flex items-center gap-1">
+                <div className="mt-1 flex items-center gap-0.5">
                   {isPositive
-                    ? <TrendingUp className="h-3.5 w-3.5 text-income" />
-                    : <TrendingDown className="h-3.5 w-3.5 text-expense" />}
+                    ? <TrendingUp className="h-3 w-3 flex-shrink-0 text-income" />
+                    : <TrendingDown className="h-3 w-3 flex-shrink-0 text-expense" />}
                   <p className={cn(
-                    'text-sm font-bold font-[family-name:var(--font-roboto-mono)]',
+                    'text-xs font-bold font-[family-name:var(--font-roboto-mono)] truncate',
                     isPositive ? 'text-income' : 'text-expense'
                   )}>
                     {(data?.totalReturnPct ?? 0) >= 0 ? '+' : ''}{(data?.totalReturnPct ?? 0).toFixed(2)}%

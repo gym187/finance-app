@@ -25,6 +25,24 @@ export function DashboardHero({ balance, totalIncome, totalExpense, savingsRate,
 
   return (
     <div className="rounded-xl border bg-card overflow-hidden">
+      {/* Mobile stats row */}
+      <div className="flex sm:hidden border-b bg-muted/20">
+        {stats.map((s, i) => (
+          <div key={s.label} className={`flex-1 flex flex-col items-center py-3 px-2${i > 0 ? ' border-l' : ''}`}>
+            <p className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+              {s.label}
+            </p>
+            {isLoading ? (
+              <Skeleton className="mt-1 h-4 w-16" />
+            ) : (
+              <p className={`mt-0.5 text-xs font-bold font-[family-name:var(--font-roboto-mono)] ${s.color}`}>
+                {formatBRL(s.value)}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
       <div className="flex items-stretch">
         {/* Left: balance principal */}
         <div className="flex-1 min-w-0 p-5 sm:p-6">
@@ -62,17 +80,17 @@ export function DashboardHero({ balance, totalIncome, totalExpense, savingsRate,
           )}
         </div>
 
-        {/* Right: mini stats */}
+        {/* Right: mini stats — desktop only */}
         <div className="hidden sm:flex flex-shrink-0 border-l bg-muted/20">
           {stats.map((s, i) => (
-            <div key={s.label} className={`flex flex-col justify-center px-6 py-5 text-center${i > 0 ? ' border-l' : ''}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+            <div key={s.label} className={`flex flex-col justify-center px-5 py-5 text-center min-w-0${i > 0 ? ' border-l' : ''}`}>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground whitespace-nowrap">
                 {s.label}
               </p>
               {isLoading ? (
-                <Skeleton className="mt-1.5 h-5 w-24 mx-auto" />
+                <Skeleton className="mt-1.5 h-5 w-20 mx-auto" />
               ) : (
-                <p className={`mt-1 text-sm font-bold font-[family-name:var(--font-roboto-mono)] ${s.color}`}>
+                <p className={`mt-1 text-sm font-bold font-[family-name:var(--font-roboto-mono)] whitespace-nowrap ${s.color}`}>
                   {formatBRL(s.value)}
                 </p>
               )}
