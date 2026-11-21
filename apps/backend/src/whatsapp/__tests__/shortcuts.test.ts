@@ -54,14 +54,15 @@ describe('matchShortcut', () => {
 describe('runShortcut', () => {
   it('saldo', async () => {
     m.getData.mockResolvedValue({ balance: 1234.5 });
-    expect(await runShortcut(1, 'saldo')).toContain('R$ 1.234,50');
+    expect(await runShortcut(1, 'saldo')).toContain('Saldo atual: *R$ 1.234,50*');
   });
   it('resumo', async () => {
-    m.getData.mockResolvedValue({ balance: 500, totalIncome: 2000, totalExpense: 1500 });
+    m.getData.mockResolvedValue({ balance: 9876.5, monthlyBalance: 500, totalIncome: 2000, totalExpense: 1500 });
     const r = await runShortcut(1, 'resumo');
-    expect(r).toContain('Receitas: R$ 2.000,00');
-    expect(r).toContain('Despesas: R$ 1.500,00');
-    expect(r).toContain('Saldo: R$ 500,00');
+    expect(r).toContain('Receitas do mês: R$ 2.000,00');
+    expect(r).toContain('Despesas do mês: R$ 1.500,00');
+    expect(r).toContain('Resultado do mês: R$ 500,00');
+    expect(r).toContain('Saldo atual: R$ 9.876,50');
   });
   it('ultimas mostra magnitude com marcador', async () => {
     m.findAllTx.mockResolvedValue({
@@ -74,6 +75,12 @@ describe('runShortcut', () => {
     expect(m.findAllTx).toHaveBeenCalledWith(1, { page: 1, limit: 5 });
     expect(r).toContain('🔴 20/11 Mercado — R$ 47,00 (Comida)');
     expect(r).toContain('🟢 19/11 Pix — R$ 100,00');
+  });
+  it('ultimas formata data UTC-meia-noite sem voltar um dia', async () => {
+    m.findAllTx.mockResolvedValue({
+      data: [{ type: 'EXPENSE', amount: -10, description: 'Padaria', date: new Date('2026-12-05T00:00:00.000Z'), category: null }],
+    });
+    expect(await runShortcut(1, 'ultimas')).toContain('🔴 05/12 Padaria');
   });
   it('ultimas vazio', async () => {
     m.findAllTx.mockResolvedValue({ data: [] });
@@ -100,6 +107,13 @@ describe('runShortcut', () => {
     const r = await runShortcut(1, 'dividas');
     expect(r).toContain('Total devido: R$ 5.000,00');
     expect(r).toContain('Carro: vence 05/12 — R$ 800,00');
+  });
+  it('dividas data UTC-meia-noite', async () => {
+    m.summary.mockResolvedValue({
+      totalDebt: 5000, totalPaid: 0, activeCount: 1,
+      nextDue: [{ name: 'Carro', dueDate: '2026-12-05T00:00:00.000Z', installmentAmount: null, currentBalance: 5000 }],
+    });
+    expect(await runShortcut(1, 'dividas')).toContain('Carro: vence 05/12');
   });
   it('dividas vazio', async () => {
     m.summary.mockResolvedValue({ totalDebt: 0, totalPaid: 0, activeCount: 0, nextDue: [] });

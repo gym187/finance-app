@@ -40,7 +40,7 @@ function ddmm(d: Date | string): string {
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
-    timeZone: 'America/Sao_Paulo',
+    timeZone: 'UTC',
   }).format(dt);
 }
 
@@ -66,16 +66,17 @@ export async function runShortcut(
 
     case 'saldo': {
       const d = await dashboardService.getData(userId);
-      return `💰 Saldo do mês: *${formatBRL(Number(d.balance))}*`;
+      return `💰 Saldo atual: *${formatBRL(Number(d.balance))}*`;
     }
 
     case 'resumo': {
       const d = await dashboardService.getData(userId);
       return [
         '*Resumo do mês*',
-        `🟢 Receitas: ${formatBRL(Number(d.totalIncome))}`,
-        `🔴 Despesas: ${formatBRL(Math.abs(Number(d.totalExpense)))}`,
-        `💰 Saldo: ${formatBRL(Number(d.balance))}`,
+        `🟢 Receitas do mês: ${formatBRL(Number(d.totalIncome))}`,
+        `🔴 Despesas do mês: ${formatBRL(Math.abs(Number(d.totalExpense)))}`,
+        `📊 Resultado do mês: ${formatBRL(Number(d.monthlyBalance))}`,
+        `💰 Saldo atual: ${formatBRL(Number(d.balance))}`,
       ].join('\n');
     }
 
