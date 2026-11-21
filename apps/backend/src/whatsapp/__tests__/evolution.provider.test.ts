@@ -166,6 +166,33 @@ describe('evolutionProvider HTTP', () => {
     expect(err.message.length).toBeLessThan(260);
   });
 
+  it('sendText e getAudio passam um signal de timeout ao fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, status: 201, text: async () => '', json: async () => ({ base64: 'YQ==' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await evolutionProvider.sendText('a@s.whatsapp.net', 'x');
+    await evolutionProvider.getAudio({ id: 'A', jid: 'j@s.whatsapp.net', phone: '1', fromMe: false, isGroup: false, kind: 'audio' });
+    for (const [, init] of fetchMock.mock.calls) expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('timeout vira o erro do provider, sem vazar a chave nem a URL', async () => {
+    const abort = new DOMException('The operation was aborted due to timeout http://evo:8080 secret-key', 'TimeoutError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
+    const e1 = await evolutionProvider.sendText('a@s.whatsapp.net', 'x').catch((e) => e as Error);
+    expect(e1.message).toMatch(/^Evolution sendText falhou/);
+    const e2 = await evolutionProvider
+      .getAudio({ id: 'A', jid: 'j@s.whatsapp.net', phone: '1', fromMe: false, isGroup: false, kind: 'audio' })
+      .catch((e) => e as Error);
+    expect(e2.message).toMatch(/^Evolution getBase64FromMediaMessage falhou/);
+    for (const e of [e1, e2]) {
+      expect(e).toBeInstanceOf(Error);
+      expect(e.message).not.toContain('secret-key');
+      expect(e.message).not.toContain('evo:8080');
+      expect((e as any).cause).toBeUndefined();
+    }
+  });
+
   it('getAudio decodes base64', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true, status: 201,

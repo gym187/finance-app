@@ -43,7 +43,9 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 function unwrapMessage(message: Record<string, unknown>): Record<string, unknown> {
   let current = message;
   for (let depth = 0; depth < 3; depth++) {
-    const inner = WRAPPER_KEYS.map((k) => asRecord(asRecord(current[k])?.message)).find((m) => m !== null);
+    const inner = WRAPPER_KEYS.map((k) => asRecord(asRecord(current[k])?.message)).find(
+      (m) => m !== null
+    );
     if (!inner) break;
     current = inner;
   }
@@ -116,26 +118,47 @@ function instancePath(): string {
   return encodeURIComponent(env.EVOLUTION_INSTANCE ?? '');
 }
 
+const FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * fetch com timeout. Falha de rede ou timeout vira o erro do provider, sem a causa
+ * original (que pode trazer URL ou cabeçalhos).
+ */
+async function evolutionFetch(op: string, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch (err) {
+    const reason = err instanceof Error && err.name === 'TimeoutError' ? 'timeout' : 'sem resposta';
+    throw new Error(`Evolution ${op} falhou (${reason})`);
+  }
+}
+
 async function sendText(jid: string, text: string): Promise<void> {
-  const res = await fetch(`${baseUrl()}/message/sendText/${instancePath()}`, {
+  const res = await evolutionFetch('sendText', `${baseUrl()}/message/sendText/${instancePath()}`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ number: jid, text }),
   });
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')).slice(0, 200);
-    throw Object.assign(new Error(`Evolution sendText falhou (${res.status}): ${detail}`), { status: res.status });
+    throw Object.assign(new Error(`Evolution sendText falhou (${res.status}): ${detail}`), {
+      status: res.status,
+    });
   }
 }
 
 async function getAudio(msg: IncomingMessage): Promise<Buffer> {
-  const res = await fetch(`${baseUrl()}/chat/getBase64FromMediaMessage/${instancePath()}`, {
-    method: 'POST',
-    headers: headers(),
-    body: JSON.stringify({
-      message: { key: { id: msg.id, remoteJid: msg.jid, fromMe: msg.fromMe } },
-    }),
-  });
+  const res = await evolutionFetch(
+    'getBase64FromMediaMessage',
+    `${baseUrl()}/chat/getBase64FromMediaMessage/${instancePath()}`,
+    {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({
+        message: { key: { id: msg.id, remoteJid: msg.jid, fromMe: msg.fromMe } },
+      }),
+    }
+  );
   if (!res.ok) {
     throw Object.assign(new Error(`Evolution getBase64FromMediaMessage falhou (${res.status})`), {
       status: res.status,
