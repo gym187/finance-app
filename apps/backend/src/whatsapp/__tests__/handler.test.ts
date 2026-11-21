@@ -470,6 +470,49 @@ describe('handleIncoming — serialização por usuário', () => {
   });
 });
 
+const LEAK = 'SEGREDO-VAZADO-9f8e7d';
+function expectNoLeak() {
+  expect(m.logError).toHaveBeenCalled();
+  for (const call of m.logError.mock.calls) expect(inspect(call, { depth: 10 })).not.toContain(LEAK);
+}
+
+describe('logs sem conteúdo do erro', () => {
+  it('falha do sendText: o corpo da resposta do Evolution não vai para o log', async () => {
+    const { provider } = fakeProvider();
+    (provider.sendText as any).mockRejectedValue(
+      Object.assign(new Error(`Evolution sendText falhou (500): ${LEAK}`), { status: 500 }),
+    );
+    await handleIncoming(msg({ text: 'saldo' }), { provider, llm: fakeLlm() });
+    expectNoLeak();
+    expect(inspect(m.logError.mock.calls[0], { depth: 10 })).toContain('500');
+  });
+
+  it('exceção ao processar mensagem de vinculado: mensagem do erro não vai para o log', async () => {
+    const { provider } = fakeProvider();
+    m.runAgent.mockRejectedValue(Object.assign(new Error(`prisma args description=${LEAK}`), { code: 'P2002' }));
+    await handleIncoming(msg({ text: 'gastei 10 no mercado' }), { provider, llm: fakeLlm() });
+    expectNoLeak();
+    expect(inspect(m.logError.mock.calls[0], { depth: 10 })).toContain('P2002');
+  });
+
+  it('webhook: handler que rejeita e parseWebhook que lança não vazam a mensagem', async () => {
+    const { provider } = fakeProvider();
+    (provider.parseWebhook as any).mockReturnValue(msg());
+    const handle = vi.fn(() => Promise.reject(new Error(LEAK)));
+    const res: any = { status: vi.fn(() => res), json: vi.fn(() => res) };
+    createWebhookController({ provider, llm: fakeLlm() }, handle)({ body: {} } as any, res);
+    await vi.waitFor(() => expect(m.logError).toHaveBeenCalled());
+    expectNoLeak();
+
+    m.logError.mockClear();
+    (provider.parseWebhook as any).mockImplementation(() => {
+      throw new Error(LEAK);
+    });
+    createWebhookController({ provider, llm: fakeLlm() }, handle)({ body: {} } as any, res);
+    expectNoLeak();
+  });
+});
+
 describe('whatsappWebhookController', () => {
   function fakeRes() {
     const res: any = { statusCode: 0, body: undefined };

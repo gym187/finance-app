@@ -105,7 +105,7 @@ async function sendText(jid: string, text: string): Promise<void> {
   });
   if (!res.ok) {
     const detail = (await res.text().catch(() => '')).slice(0, 200);
-    throw new Error(`Evolution sendText falhou (${res.status}): ${detail}`);
+    throw Object.assign(new Error(`Evolution sendText falhou (${res.status}): ${detail}`), { status: res.status });
   }
 }
 
@@ -118,7 +118,9 @@ async function getAudio(msg: IncomingMessage): Promise<Buffer> {
     }),
   });
   if (!res.ok) {
-    throw new Error(`Evolution getBase64FromMediaMessage falhou (${res.status})`);
+    throw Object.assign(new Error(`Evolution getBase64FromMediaMessage falhou (${res.status})`), {
+      status: res.status,
+    });
   }
   const json = (await res.json()) as { base64?: unknown };
   if (typeof json.base64 !== 'string' || !json.base64) {

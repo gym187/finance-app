@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { inspect } from 'util';
 
 const m = vi.hoisted(() => ({
   create: vi.fn(),
@@ -8,6 +9,10 @@ const m = vi.hoisted(() => ({
   summary: vi.fn(),
   findAllCat: vi.fn(),
   groupBy: vi.fn(),
+  logError: vi.fn(),
+}));
+vi.mock('../../config/logger', () => ({
+  logger: { error: m.logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../services/transaction.service', () => ({
   transactionService: { create: m.create, findAll: m.findAllTx },
@@ -459,6 +464,26 @@ describe('consultas', () => {
     const out = await buildTools(1).run('consultar_resumo', '{}');
     expect(typeof out).toBe('string');
     expect(out).not.toContain('boom');
+  });
+
+  it('erros de service vão para o logger sem a mensagem do erro (nada no console)', async () => {
+    const LEAK = 'description=SEGREDO-VAZADO-1a2b3c';
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      m.groupBy.mockRejectedValue(Object.assign(new Error(LEAK), { code: 'P1001' }));
+      m.findAllTx.mockResolvedValue({ data: [], total: 0 });
+      await buildTools(1).run('consultar_transacoes', '{}');
+      m.create.mockRejectedValueOnce(Object.assign(new Error(LEAK), { code: 'P2002' }));
+      setPending(1, pendingBase);
+      await confirmPending(1);
+      expect(m.logError).toHaveBeenCalledTimes(2);
+      for (const call of m.logError.mock.calls) expect(inspect(call, { depth: 10 })).not.toContain(LEAK);
+      expect(inspect(m.logError.mock.calls[0], { depth: 10 })).toContain('P1001');
+      expect(inspect(m.logError.mock.calls[1], { depth: 10 })).toContain('P2002');
+      expect(consoleSpy).not.toHaveBeenCalled();
+    } finally {
+      consoleSpy.mockRestore();
+    }
   });
 
   it('ferramenta desconhecida → texto', async () => {

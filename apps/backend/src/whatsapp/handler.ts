@@ -1,4 +1,5 @@
 import { logger } from '../config/logger';
+import { safeErr } from './log';
 import type { IncomingMessage, WhatsappProvider } from './provider';
 import type { LlmClient } from './llm';
 import { seenBefore } from './webhook.guard';
@@ -48,17 +49,8 @@ async function reply(deps: HandlerDeps, msg: IncomingMessage, text: string): Pro
   try {
     await deps.provider.sendText(msg.jid, text);
   } catch (err) {
-    logger.error({ err, msgId: msg.id }, '[whatsapp] falha ao enviar resposta');
+    logger.error({ err: safeErr(err), msgId: msg.id }, '[whatsapp] falha ao enviar resposta');
   }
-}
-
-/** Só nome e código do erro: mensagens do Prisma podem embutir argumentos (jid, telefone, código). */
-function safeErr(err: unknown): { name?: string; code?: unknown } {
-  if (err && typeof err === 'object') {
-    const e = err as { name?: unknown; code?: unknown };
-    return { name: typeof e.name === 'string' ? e.name : undefined, code: e.code };
-  }
-  return { name: typeof err };
 }
 
 async function handleUnknown(msg: IncomingMessage, deps: HandlerDeps): Promise<void> {
@@ -179,7 +171,7 @@ export async function handleIncoming(msg: IncomingMessage, deps: HandlerDeps): P
     try {
       await handleLinked(uid, msg, deps);
     } catch (err) {
-      logger.error({ err, msgId: msg.id, userId: uid }, '[whatsapp] falha ao processar mensagem');
+      logger.error({ err: safeErr(err), msgId: msg.id, userId: uid }, '[whatsapp] falha ao processar mensagem');
       await reply(deps, msg, MSG.failure);
     }
   });

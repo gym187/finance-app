@@ -8,6 +8,10 @@ const m = vi.hoisted(() => ({
   summary: vi.fn(),
   findAllCat: vi.fn(),
   groupBy: vi.fn(),
+  logError: vi.fn(),
+}));
+vi.mock('../../config/logger', () => ({
+  logger: { error: m.logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../services/transaction.service', () => ({
   transactionService: { create: m.create, findAll: m.findAllTx },

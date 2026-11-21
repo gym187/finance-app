@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../config/prisma';
+import { logger } from '../config/logger';
 import { nowBR } from '../config/date';
 import { transactionService } from '../services/transaction.service';
 import { categoryService } from '../services/category.service';
@@ -7,6 +8,7 @@ import { runShortcut } from './shortcuts';
 import { formatBRL, normalizeText } from './format';
 import type { ToolDef } from './llm';
 import { getPending, setPending, clearPending, restorePending } from './conversation';
+import { safeErr } from './log';
 
 /*
  * Ferramentas do agente. SEGURANÇA: toda ferramenta age apenas para o `userId`
@@ -156,7 +158,7 @@ export async function confirmPending(userId: number): Promise<string> {
       currency: 'BRL',
     });
   } catch (err) {
-    console.error('[whatsapp] falha ao confirmar lançamento', { userId, err });
+    logger.error({ err: safeErr(err), userId }, '[whatsapp] falha ao confirmar lançamento');
     restorePending(userId, p); // mantém para o usuário tentar de novo
     return 'Não consegui lançar agora. Tente responder *sim* de novo em instantes.';
   }
@@ -333,7 +335,7 @@ export function buildTools(userId: number, opts: { userText?: string } = {}): Ag
       try {
         return await dispatch(name, argsJson ?? '');
       } catch (err) {
-        console.error('[whatsapp] erro na ferramenta', { userId, name, err });
+        logger.error({ err: safeErr(err), userId, tool: name }, '[whatsapp] erro na ferramenta');
         return 'Erro ao acessar os dados agora. Avise o usuário para tentar de novo em instantes.';
       }
     },
