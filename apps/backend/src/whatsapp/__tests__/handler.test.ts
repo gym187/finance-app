@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { inspect } from 'util';
 
 const m = vi.hoisted(() => ({
   create: vi.fn(),
@@ -176,6 +177,81 @@ describe('handleIncoming — remetente desconhecido', () => {
     expect(m.runAgent).not.toHaveBeenCalled();
   });
 
+  it('concorrência: 10 códigos simultâneos do mesmo jid → no máximo 5 chegam ao consumeLinkCode', async () => {
+    const { provider, sent } = fakeProvider();
+    const gate = deferred<{ status: 'invalid' }>();
+    m.consumeLinkCode.mockImplementation(() => gate.promise);
+    const ps = Array.from({ length: 10 }, (_, i) =>
+      handleIncoming(msg({ jid: jid(5), text: String(100000 + i) }), { provider, llm: fakeLlm() })
+    );
+    await vi.waitFor(() => expect(m.consumeLinkCode).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    expect(m.consumeLinkCode.mock.calls.length).toBeLessThanOrEqual(5);
+    gate.resolve({ status: 'invalid' });
+    await Promise.all(ps);
+    expect(m.consumeLinkCode.mock.calls.length).toBeLessThanOrEqual(5);
+    expect(sent.length).toBe(m.consumeLinkCode.mock.calls.length);
+  });
+
+  it('concorrência global: 60 jids simultâneos → no máximo 50 chegam ao consumeLinkCode', async () => {
+    const { provider } = fakeProvider();
+    const gate = deferred<{ status: 'invalid' }>();
+    m.consumeLinkCode.mockImplementation(() => gate.promise);
+    const ps = Array.from({ length: 60 }, (_, i) =>
+      handleIncoming(msg({ jid: jid(200 + i), text: '000000' }), { provider, llm: fakeLlm() })
+    );
+    await vi.waitFor(() => expect(m.consumeLinkCode).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 10));
+    gate.resolve({ status: 'invalid' });
+    await Promise.all(ps);
+    expect(m.consumeLinkCode.mock.calls.length).toBeLessThanOrEqual(50);
+    expect(m.consumeLinkCode.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it('vínculo bem-sucedido devolve a reserva: 4 falhas + 1 vínculo ainda deixam uma 5a tentativa', async () => {
+    const { provider } = fakeProvider();
+    m.consumeLinkCode.mockResolvedValue({ status: 'invalid' });
+    for (let i = 0; i < 4; i++) await handleIncoming(msg({ jid: jid(6), text: '000000' }), { provider, llm: fakeLlm() });
+    m.consumeLinkCode.mockResolvedValueOnce({ status: 'linked', userId: 7 });
+    await handleIncoming(msg({ jid: jid(6), text: '483920' }), { provider, llm: fakeLlm() });
+    expect(m.consumeLinkCode).toHaveBeenCalledTimes(5);
+    // a reserva do vínculo foi devolvida: a 5a falha ainda é tentada...
+    await handleIncoming(msg({ jid: jid(6), text: '000001' }), { provider, llm: fakeLlm() });
+    expect(m.consumeLinkCode).toHaveBeenCalledTimes(6);
+    // ...e só então o jid fica bloqueado
+    await handleIncoming(msg({ jid: jid(6), text: '000002' }), { provider, llm: fakeLlm() });
+    expect(m.consumeLinkCode).toHaveBeenCalledTimes(6);
+  });
+
+  it('consumeLinkCode que lança conta como falha e o log não expõe código nem jid', async () => {
+    const { provider, sent } = fakeProvider();
+    const boom = Object.assign(new Error(`falha code=483920 jid=${jid(7)}`), { code: 'P1001' });
+    m.consumeLinkCode.mockRejectedValue(boom);
+    for (let i = 0; i < 5; i++) await handleIncoming(msg({ jid: jid(7), text: '483920' }), { provider, llm: fakeLlm() });
+    expect(m.consumeLinkCode).toHaveBeenCalledTimes(5);
+    expect(sent).toHaveLength(0);
+    await handleIncoming(msg({ jid: jid(7), text: '483920' }), { provider, llm: fakeLlm() });
+    expect(m.consumeLinkCode).toHaveBeenCalledTimes(5);
+    expect(m.logError).toHaveBeenCalled();
+    for (const call of m.logError.mock.calls) {
+      const dump = inspect(call, { depth: 10 });
+      expect(dump).not.toContain('483920');
+      expect(dump).not.toContain(jid(7));
+      expect(dump).not.toContain('5511900000007');
+    }
+    expect(inspect(m.logError.mock.calls[0])).toContain('P1001');
+  });
+
+  it('áudio de desconhecido nunca é baixado, transcrito nem usado como código', async () => {
+    const { provider, sent } = fakeProvider();
+    const llm = fakeLlm('483920');
+    await handleIncoming(msg({ jid: jid(8), kind: 'audio', text: undefined, audioSeconds: 3 }), { provider, llm });
+    expect(provider.getAudio).not.toHaveBeenCalled();
+    expect(llm.transcribe).not.toHaveBeenCalled();
+    expect(m.consumeLinkCode).not.toHaveBeenCalled();
+    expect(sent.map((s) => s.text)).toEqual(['Para usar, vincule seu número na página WhatsApp do AppFin.']);
+  });
+
   it('erro ao resolver usuário não lança', async () => {
     const { provider, sent } = fakeProvider();
     m.findUserIdByJid.mockRejectedValue(new Error('db'));
@@ -260,6 +336,23 @@ describe('handleIncoming — vinculado', () => {
     expect(sent[0].text).toBe('Áudio muito longo (máx. 2 min). Mande um mais curto.');
     expect(llm.transcribe).not.toHaveBeenCalled();
     expect(provider.getAudio).not.toHaveBeenCalled();
+  });
+
+  it('áudio sem audioSeconds e buffer de 4 MB: recusado sem transcrever', async () => {
+    const { provider, sent } = fakeProvider();
+    (provider.getAudio as any).mockResolvedValue(Buffer.alloc(4 * 1024 * 1024));
+    const llm = fakeLlm('x');
+    await handleIncoming(msg({ kind: 'audio', text: undefined }), { provider, llm });
+    expect(sent[0].text).toBe('Áudio muito longo (máx. 2 min). Mande um mais curto.');
+    expect(llm.transcribe).not.toHaveBeenCalled();
+  });
+
+  it('áudio sem audioSeconds e buffer pequeno: transcrito', async () => {
+    const { provider, sent } = fakeProvider();
+    const llm = fakeLlm('quanto gastei?');
+    await handleIncoming(msg({ kind: 'audio', text: undefined }), { provider, llm });
+    expect(llm.transcribe).toHaveBeenCalledTimes(1);
+    expect(sent[0].text).toBe('resposta do agente');
   });
 
   it('áudio com transcrição só de espaços: não entendi, sem agente', async () => {

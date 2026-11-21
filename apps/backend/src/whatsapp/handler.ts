@@ -3,7 +3,7 @@ import type { IncomingMessage, WhatsappProvider } from './provider';
 import type { LlmClient } from './llm';
 import { seenBefore } from './webhook.guard';
 import { findUserIdByJid, consumeLinkCode, unlink } from './link.service';
-import { consume, allowUnknownReply, allowLinkAttempt, recordLinkFailure } from './usage';
+import { consume, allowUnknownReply, allowLinkAttempt, recordLinkFailure, releaseLinkAttempt } from './usage';
 import { matchShortcut, runShortcut } from './shortcuts';
 import { runAgent } from './agent';
 import { confirmPending, cancelPending } from './tools';
@@ -12,6 +12,7 @@ import { getPending, appendHistory } from './conversation';
 export type HandlerDeps = { provider: WhatsappProvider; llm: LlmClient };
 
 const MAX_AUDIO_SECONDS = 120;
+const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
 const LINK_CODE_RE = /^\d{6}$/;
 
 const MSG = {
@@ -51,17 +52,36 @@ async function reply(deps: HandlerDeps, msg: IncomingMessage, text: string): Pro
   }
 }
 
+/** Só nome e código do erro: mensagens do Prisma podem embutir argumentos (jid, telefone, código). */
+function safeErr(err: unknown): { name?: string; code?: unknown } {
+  if (err && typeof err === 'object') {
+    const e = err as { name?: unknown; code?: unknown };
+    return { name: typeof e.name === 'string' ? e.name : undefined, code: e.code };
+  }
+  return { name: typeof err };
+}
+
 async function handleUnknown(msg: IncomingMessage, deps: HandlerDeps): Promise<void> {
   const code = (msg.text ?? '').trim();
   if (msg.kind === 'text' && LINK_CODE_RE.test(code)) {
-    // Anti força bruta: bloqueado → silêncio total
-    if (!allowLinkAttempt(msg.jid)) return;
-    const result = await consumeLinkCode(code, msg.jid, msg.phone);
+    // Anti força bruta: checa e RESERVA no mesmo passo síncrono (sem await entre eles),
+    // para que rajadas concorrentes não passem todas com o contador ainda zerado.
+    if (!allowLinkAttempt(msg.jid)) return; // bloqueado → silêncio total
+    recordLinkFailure(msg.jid);
+    let result: Awaited<ReturnType<typeof consumeLinkCode>>;
+    try {
+      result = await consumeLinkCode(code, msg.jid, msg.phone);
+    } catch (err) {
+      // a reserva fica: conta como falha
+      logger.error({ err: safeErr(err), msgId: msg.id }, '[whatsapp] falha ao consumir código de vínculo');
+      return;
+    }
     if (result.status === 'linked') {
+      releaseLinkAttempt(msg.jid);
       await reply(deps, msg, MSG.linked);
       return;
     }
-    recordLinkFailure(msg.jid);
+    // invalid / in_use: a reserva já é a falha registrada
     await reply(deps, msg, result.status === 'in_use' ? MSG.inUse : MSG.invalid);
     return;
   }
@@ -88,6 +108,10 @@ async function handleLinked(userId: number, msg: IncomingMessage, deps: HandlerD
       return;
     }
     const audio = await deps.provider.getAudio(msg);
+    if (audio.length > MAX_AUDIO_BYTES) {
+      await reply(deps, msg, MSG.audioTooLong);
+      return;
+    }
     transcription = (await deps.llm.transcribe(audio)).trim();
     if (!transcription) {
       await reply(deps, msg, MSG.audioEmpty);
@@ -137,7 +161,7 @@ export async function handleIncoming(msg: IncomingMessage, deps: HandlerDeps): P
   try {
     userId = await findUserIdByJid(msg.jid, msg.phone);
   } catch (err) {
-    logger.error({ err, msgId: msg.id }, '[whatsapp] falha ao identificar remetente');
+    logger.error({ err: safeErr(err), msgId: msg.id }, '[whatsapp] falha ao identificar remetente');
     return;
   }
 
@@ -145,7 +169,7 @@ export async function handleIncoming(msg: IncomingMessage, deps: HandlerDeps): P
     try {
       await handleUnknown(msg, deps);
     } catch (err) {
-      logger.error({ err, msgId: msg.id }, '[whatsapp] falha ao tratar remetente desconhecido');
+      logger.error({ err: safeErr(err), msgId: msg.id }, '[whatsapp] falha ao tratar remetente desconhecido');
     }
     return;
   }
