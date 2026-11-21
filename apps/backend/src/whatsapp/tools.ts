@@ -47,6 +47,11 @@ function ddmm(d: Date | string): string {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' }).format(dt);
 }
 
+/** "dd/mm", com "/aaaa" quando o ano difere do ano atual no Brasil. */
+function ddmmMaybeYear(date: string, today: string = todayBR()): string {
+  return date.slice(0, 4) === today.slice(0, 4) ? ddmm(date) : `${ddmm(date)}/${date.slice(0, 4)}`;
+}
+
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'data deve ser YYYY-MM-DD')
@@ -138,8 +143,7 @@ async function proposeTx(userId: number, argsJson: string): Promise<ProposeResul
     date,
   });
 
-  const when =
-    date === today ? 'hoje' : date.slice(0, 4) === today.slice(0, 4) ? `em ${ddmm(date)}` : `em ${ddmm(date)}/${date.slice(0, 4)}`;
+  const when = date === today ? 'hoje' : `em ${ddmmMaybeYear(date, today)}`;
   return {
     ok: true,
     text: `Lançar *${typeLabel(a.type)}* de *${formatBRL(a.amount)}* em *${category.name}* ${when}? Responda *sim* ou *não*`,
@@ -165,7 +169,7 @@ export async function confirmPending(userId: number): Promise<string> {
     restorePending(userId, p); // mantém para o usuário tentar de novo
     return 'Não consegui lançar agora. Tente responder *sim* de novo em instantes.';
   }
-  return `✅ Lançado: ${typeLabel(p.type)} de ${formatBRL(p.amount)} em ${p.categoryName} (${ddmm(p.date)}).`;
+  return `✅ Lançado: ${typeLabel(p.type)} de ${formatBRL(p.amount)} em ${p.categoryName} (${ddmmMaybeYear(p.date)}).`;
 }
 
 export function cancelPending(userId: number): string {

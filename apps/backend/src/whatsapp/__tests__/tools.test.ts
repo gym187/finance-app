@@ -246,6 +246,18 @@ describe('confirmPending / cancelPending', () => {
     expect(getPending(1)).toBeNull();
   });
 
+  it('texto de sucesso mostra o ano só quando difere do ano atual no BR', async () => {
+    m.create.mockResolvedValue({ id: 1 });
+    setPending(1, { ...pendingBase, date: '2026-03-05' });
+    expect(await confirmPending(1)).toBe('✅ Lançado: despesa de R$ 47,00 em Mercado (05/03).');
+    setPending(1, { ...pendingBase, date: '2025-12-31' });
+    expect(await confirmPending(1)).toBe('✅ Lançado: despesa de R$ 47,00 em Mercado (31/12/2025).');
+    // 31/12/2026 23:30 no BR (02:30 UTC de 2027): ano atual ainda é 2026
+    vi.setSystemTime(Date.UTC(2027, 0, 1, 2, 30, 0));
+    setPending(1, { ...pendingBase, date: '2026-12-31' });
+    expect(await confirmPending(1)).toBe('✅ Lançado: despesa de R$ 47,00 em Mercado (31/12).');
+  });
+
   it('"sim" duplo concorrente cria uma única transação', async () => {
     let resolve!: (v: unknown) => void;
     m.create.mockReturnValue(new Promise((r) => (resolve = r)));
