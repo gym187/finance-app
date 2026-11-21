@@ -47,6 +47,8 @@ COMPOSE_PROFILES=whatsapp   # habilita o servico evolution (veja abaixo)
 
 **Profile `whatsapp`:** o servico `evolution` esta sob `profiles: ["whatsapp"]`, entao um `docker compose up -d` comum NAO o sobe. Habilite com `COMPOSE_PROFILES=whatsapp` no `.env` (preferido: deploys futuros mantem a Evolution rodando) ou use `docker compose --profile whatsapp up -d`. `EVOLUTION_API_KEY` deve ser SEMPRE um valor aleatorio forte (>= 32 caracteres hex) quando o profile estiver ativo. Esvaziar `EVOLUTION_API_URL` no `.env` nao faz nada: o default `:-http://evolution:8080` do compose preenche de volta.
 
+Comandos do compose que citam o servico `evolution` pelo nome (`restart`, `logs`, `ps`, `rm`, `up -d evolution`...) precisam de `--profile whatsapp`, a menos que `COMPOSE_PROFILES=whatsapp` esteja no `.env` (ai o profile ja esta ativo e o flag e desnecessario). Neste runbook eles sempre levam `--profile whatsapp`, que funciona nos dois casos. `docker logs finance_evolution` usa o nome do container e nao depende de profile.
+
 O modulo so liga se os cinco obrigatorios (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `WHATSAPP_WEBHOOK_SECRET`, `OPENAI_API_KEY`) estiverem preenchidos (`WHATSAPP_BOT_NUMBER` nao e obrigatorio para ligar o modulo, mas configure-o); caso contrario o backend sobe normalmente com o WhatsApp desativado.
 
 A Evolution NAO recebe `POSTGRES_USER`/`POSTGRES_PASSWORD`: sua connection string usa o role `evolution` com `EVOLUTION_DB_PASSWORD` (gere com `openssl rand -hex 24`; caracteres como `@ : / ? #` quebrariam a URI, por isso so hex).
@@ -83,8 +85,16 @@ Hardening OPCIONAL, aplicar com cuidado e nunca automaticamente: `REVOKE CONNECT
 
 ## 4. Subir
 
+Antes do `up`, confira que a chave da Evolution e a senha do banco estao preenchidas e fortes (cada comando deve imprimir `1`):
+
 ```bash
 cd ~/finance-app
+grep -cE '^EVOLUTION_API_KEY=[0-9a-f]{64}$' .env       # 1 = chave hex de 64 caracteres (openssl rand -hex 32)
+grep -cE '^EVOLUTION_DB_PASSWORD=[0-9a-f]{48}$' .env   # 1 = senha hex de 48 caracteres (openssl rand -hex 24)
+```
+Se imprimir `0`, NAO suba: com `EVOLUTION_API_KEY` vazia a Evolution cai na chave de exemplo hardcoded `BQYHJGJHJ` (veja secao 11) e qualquer um na rede do compose controlaria a sessao do WhatsApp.
+
+```bash
 docker compose up -d --build   # com COMPOSE_PROFILES=whatsapp no .env (ou --profile whatsapp)
 docker ps                       # 4 containers: postgres, backend, frontend, evolution
 docker logs -f finance_evolution
@@ -99,7 +109,7 @@ A porta 8080 da Evolution esta somente em loopback (`127.0.0.1:8080`). Do seu co
 ```bash
 ssh -L 8080:localhost:8080 ops@192.168.15.2
 ```
-Em outro terminal (local), com a chave `EVOLUTION_API_KEY` do `.env`:
+Em outro terminal (local), com a chave `EVOLUTION_API_KEY` do `.env`. Execute em bash (nao em fish): `read -rs` e a citacao `'"$VAR"'` abaixo sao sintaxe de bash.
 
 ```bash
 read -rs EVO_KEY   # cola a EVOLUTION_API_KEY (nao aparece no historico); depois: export EVO_KEY
@@ -120,7 +130,7 @@ Os dados da sessao ficam no volume `evolution_instances` e no banco `evolution`;
 
 ## 6. Registrar o webhook na instancia
 
-(O webhook global da Evolution fica DESLIGADO; o registro e por instancia.) O corpo e aninhado em `webhook`:
+(O webhook global da Evolution fica DESLIGADO; o registro e por instancia.) O corpo e aninhado em `webhook`. Execute em bash (nao em fish), no mesmo terminal do passo 5:
 
 ```bash
 read -rs WHATSAPP_WEBHOOK_SECRET   # cola o segredo (fora do historico)
@@ -141,7 +151,9 @@ Confira com `curl -s http://localhost:8080/webhook/find/appfin -H "apikey: $EVO_
 
 ## 7. Vincular um usuario
 
-No app, logado, abra a pagina `/whatsapp`, informe o numero do WhatsApp pessoal, gere o codigo e envie-o ao numero do bot. O vinculo tem protecao anti forca bruta. Depois teste `saldo`.
+No app, logado, abra a pagina `/whatsapp` e gere o codigo (a pagina NAO pede numero de telefone). Do WhatsApp pessoal, envie o codigo de 6 digitos ao numero do bot: o numero que mandou o codigo e o que fica vinculado. Depois teste `saldo`.
+
+O vinculo tem protecao anti forca bruta: 5 tentativas erradas por numero por hora e um teto GLOBAL de 50 tentativas erradas por hora. Trade-off aceito: alguem com varios numeros pode esgotar o teto global e bloquear novos vinculos de todos por ate 1 hora (quem ja esta vinculado nao e afetado). Se acontecer, basta esperar; reiniciar o backend tambem zera os contadores (ficam em memoria).
 
 ## 8. Logs e diagnostico
 
@@ -177,6 +189,10 @@ Audios com mais de 30 dias deixam de poder ser baixados (o bot so precisa deles 
 - Remover a Evolution: `docker compose --profile whatsapp rm -sf evolution` (nao toca no Postgres) e remova `whatsapp` de `COMPOSE_PROFILES` no `.env`, para um proximo `up -d` nao recria-la.
 - O backend nao depende da Evolution: se ela cair, o app segue funcionando.
 
+### Rollback de codigo
+
+Voltar a `stable` para o commit anterior ao merge de `feat/whatsapp` (e rebuildar o backend/frontend) e seguro: a migration `add_whatsapp` e apenas aditiva (duas colunas anulaveis em `User` e a tabela nova `WhatsappLinkCode`); o codigo antigo simplesmente nao as usa. NAO reverta a migration nem apague as colunas/tabela no rollback. O `prisma migrate deploy` do codigo antigo pode avisar que ha uma migration aplicada ausente na pasta local; nesse caso e esperado (confira no log que o backend subiu). Se reaplicar a feature depois, os vinculos continuam la.
+
 ## 10. Trocar o numero do bot
 
 1. `curl -X DELETE http://localhost:8080/instance/logout/appfin -H "apikey: $EVO_KEY"` (pelo tunel).
@@ -211,5 +227,6 @@ Verificado (codigo-fonte da tag 2.3.7 em github.com/EvolutionAPI/evolution-api, 
 - `POST /webhook/set/{instance}`: corpo aninhado em `webhook` com `enabled`, `url` (obrigatorios), `headers`, `byEvents`, `base64`, `events`.
 - `sendText`: corpo `{ number, text }`. `getBase64FromMediaMessage`: corpo `{ message: { key: { id, remoteJid, fromMe } } }`, resposta contem `base64`, `mimetype`, `mediaType`, `fileName`.
 - Antes de enviar o webhook, se `remoteJid` for `@lid` e existir `remoteJidAlt`, a Evolution troca um pelo outro.
+- `getBase64FromMediaMessage` so com `key`: busca a mensagem na tabela `"Message"` por `key->>'id'` (por isso `DATABASE_SAVE_DATA_NEW_MESSAGE=true`). `DATABASE_SAVE_MESSAGE_UPDATE`, `_CONTACTS` e `_CHATS` so condicionam gravacoes (`whatsapp.baileys.service.ts`); ausente = `false`.
 
-NAO verificado (paginas doc.evolution-api.com retornaram 404 no momento da pesquisa; confirmar com mensagem real): formato exato de `instance/create`/QR, `webhook/find`, se `sendText.number` aceita JID completo (`...@s.whatsapp.net`; `@lid` nao verificado), a busca interna da mensagem em `getBase64FromMediaMessage` (so por `key.id`?), e a caixa do campo `event` no payload (o parser aceita `messages.upsert` e `MESSAGES_UPSERT`).
+NAO verificado (paginas doc.evolution-api.com retornaram 404 no momento da pesquisa; confirmar com mensagem real): formato exato de `instance/create`/QR, `webhook/find`, se `sendText.number` aceita JID completo (`...@s.whatsapp.net`; `@lid` nao verificado), e a caixa do campo `event` no payload (o parser aceita `messages.upsert` e `MESSAGES_UPSERT`).
