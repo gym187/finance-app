@@ -112,6 +112,12 @@ describe('evolutionProvider HTTP', () => {
     await expect(evolutionProvider.sendText('a@s.whatsapp.net', 'x')).rejects.toThrow(/500/);
   });
 
+  it('sendText trunca o detalhe do erro em 200 caracteres', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'x'.repeat(1000) }));
+    const err = await evolutionProvider.sendText('a@s.whatsapp.net', 'x').catch((e) => e as Error);
+    expect(err.message.length).toBeLessThan(260);
+  });
+
   it('getAudio decodes base64', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true, status: 201,
@@ -124,6 +130,8 @@ describe('evolutionProvider HTTP', () => {
     expect(buf.toString()).toBe('audio-bytes');
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('http://evo:8080/chat/getBase64FromMediaMessage/appfin');
-    expect(JSON.parse(init.body)).toEqual({ message: { key: { id: 'ABC123' } } });
+    expect(JSON.parse(init.body)).toEqual({
+      message: { key: { id: 'ABC123', remoteJid: 'j@s.whatsapp.net', fromMe: false } },
+    });
   });
 });

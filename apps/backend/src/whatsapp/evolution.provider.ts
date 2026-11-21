@@ -93,23 +93,29 @@ function headers(): Record<string, string> {
   return { 'Content-Type': 'application/json', apikey: env.EVOLUTION_API_KEY ?? '' };
 }
 
+function instancePath(): string {
+  return encodeURIComponent(env.EVOLUTION_INSTANCE ?? '');
+}
+
 async function sendText(jid: string, text: string): Promise<void> {
-  const res = await fetch(`${baseUrl()}/message/sendText/${env.EVOLUTION_INSTANCE}`, {
+  const res = await fetch(`${baseUrl()}/message/sendText/${instancePath()}`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify({ number: jid, text }),
   });
   if (!res.ok) {
-    const detail = await res.text().catch(() => '');
+    const detail = (await res.text().catch(() => '')).slice(0, 200);
     throw new Error(`Evolution sendText falhou (${res.status}): ${detail}`);
   }
 }
 
 async function getAudio(msg: IncomingMessage): Promise<Buffer> {
-  const res = await fetch(`${baseUrl()}/chat/getBase64FromMediaMessage/${env.EVOLUTION_INSTANCE}`, {
+  const res = await fetch(`${baseUrl()}/chat/getBase64FromMediaMessage/${instancePath()}`, {
     method: 'POST',
     headers: headers(),
-    body: JSON.stringify({ message: { key: { id: msg.id } } }),
+    body: JSON.stringify({
+      message: { key: { id: msg.id, remoteJid: msg.jid, fromMe: msg.fromMe } },
+    }),
   });
   if (!res.ok) {
     throw new Error(`Evolution getBase64FromMediaMessage falhou (${res.status})`);
