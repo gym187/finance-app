@@ -11,12 +11,13 @@ export function normalizePhone(input: string): string | null {
 
 /**
  * Retorna o número e a variante com/sem o 9 após o DDD, sem duplicatas.
+ * O 9 só é acrescentado a números de 8 dígitos de celular (começando com 6–9); fixos não.
  */
 export function phoneVariants(phone: string): string[] {
   const variants = new Set<string>([phone]);
   if (phone.length === 13 && phone.startsWith('55') && phone[4] === '9') {
     variants.add(phone.slice(0, 4) + phone.slice(5));
-  } else if (phone.length === 12 && phone.startsWith('55')) {
+  } else if (phone.length === 12 && phone.startsWith('55') && /[6-9]/.test(phone[4])) {
     variants.add(phone.slice(0, 4) + '9' + phone.slice(4));
   }
   return [...variants];

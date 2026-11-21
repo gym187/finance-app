@@ -28,6 +28,15 @@ describe('phoneVariants', () => {
     expect(v).toContain('5511999998888');
     expect(v).toContain('551199998888');
   });
+  it('fixo (8 dígitos começando com 2–5) não ganha o 9', () => {
+    expect(phoneVariants('551133334444')).toEqual(['551133334444']);
+    expect(phoneVariants('552125556666')).toEqual(['552125556666']);
+    expect(phoneVariants('554150001111')).toEqual(['554150001111']);
+  });
+  it.each(['6', '7', '8', '9'])('celular antigo começando com %s ganha o 9', (d) => {
+    const phone = `5511${d}9998888`;
+    expect(phoneVariants(phone)).toEqual([phone, `55119${d}9998888`]);
+  });
   it('não tem duplicatas', () => {
     const v = phoneVariants('5511999998888');
     expect(new Set(v).size).toBe(v.length);
