@@ -4,7 +4,7 @@ import { nowBR } from '../config/date';
 import { transactionService } from '../services/transaction.service';
 import { categoryService } from '../services/category.service';
 import { runShortcut } from './shortcuts';
-import { formatBRL } from './format';
+import { formatBRL, normalizeText } from './format';
 import type { ToolDef } from './llm';
 import { getPending, setPending, clearPending, restorePending } from './conversation';
 
@@ -17,6 +17,19 @@ import { getPending, setPending, clearPending, restorePending } from './conversa
 const NO_PENDING = 'Não há lançamento pendente.';
 const MAX_AMOUNT = 10_000_000;
 const MAX_LIST = 20;
+const MAX_DATE_DISTANCE_DAYS = 366;
+const DAY_MS = 86_400_000;
+const AFFIRMATIVE = new Set([
+  'sim', 'pode', 'confirmo', 'confirma', 'isso', 'ok', 'blz', 'beleza', 'certo', 'fechado', 'manda', 'lanca',
+]);
+
+/** Texto do usuário é uma afirmação simples ("sim", "pode lançar"), sem números. */
+export function isPlainAffirmation(text: string): boolean {
+  const n = normalizeText(text);
+  if (/\d/.test(n)) return false;
+  const first = n.split(' ')[0];
+  return AFFIRMATIVE.has(first);
+}
 const DEFAULT_LIST = 10;
 
 function todayBR(): string {
@@ -81,23 +94,36 @@ function parseArgs<T extends z.ZodTypeAny>(
 
 const typeLabel = (t: 'INCOME' | 'EXPENSE') => (t === 'INCOME' ? 'receita' : 'despesa');
 
-async function proposeTx(userId: number, argsJson: string): Promise<string> {
+type ProposeResult = { ok: true; text: string } | { ok: false; text: string };
+
+async function proposeTx(userId: number, argsJson: string): Promise<ProposeResult> {
   const parsed = parseArgs(proposeSchema, argsJson);
-  if (!parsed.ok) return parsed.error;
+  if (!parsed.ok) return { ok: false, text: parsed.error };
   const a = parsed.data;
+
+  const today = todayBR();
+  const date = a.date ?? today;
+  const distanceDays = Math.abs(Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS;
+  if (distanceDays > MAX_DATE_DISTANCE_DAYS) {
+    return {
+      ok: false,
+      text: 'Erro: data a mais de 1 ano de hoje. Confirme a data com o usuário (formato YYYY-MM-DD).',
+    };
+  }
 
   // Categoria só da lista do próprio usuário; nunca cria categoria.
   const cats = await categoryService.findAll(userId);
   if (cats.length === 0) {
-    return 'Erro: o usuário não tem categorias. Peça para ele: crie uma categoria no app antes de lançar.';
+    return {
+      ok: false,
+      text: 'Erro: o usuário não tem categorias. Peça para ele: crie uma categoria no app antes de lançar.',
+    };
   }
   const category =
     (a.categoryId != null ? cats.find((c) => c.id === a.categoryId) : undefined) ??
     cats.find((c) => c.name.trim().toLowerCase() === 'outros') ??
     cats[0];
 
-  const today = todayBR();
-  const date = a.date ?? today;
   setPending(userId, {
     type: a.type,
     amount: a.amount,
@@ -107,8 +133,12 @@ async function proposeTx(userId: number, argsJson: string): Promise<string> {
     date,
   });
 
-  const when = date === today ? 'hoje' : `em ${ddmm(date)}`;
-  return `Lançar *${typeLabel(a.type)}* de *${formatBRL(a.amount)}* em *${category.name}* ${when}? Responda *sim* ou *não*`;
+  const when =
+    date === today ? 'hoje' : date.slice(0, 4) === today.slice(0, 4) ? `em ${ddmm(date)}` : `em ${ddmm(date)}/${date.slice(0, 4)}`;
+  return {
+    ok: true,
+    text: `Lançar *${typeLabel(a.type)}* de *${formatBRL(a.amount)}* em *${category.name}* ${when}? Responda *sim* ou *não*`,
+  };
 }
 
 export async function confirmPending(userId: number): Promise<string> {
@@ -243,24 +273,46 @@ const definitions: ToolDef[] = [
   },
 ];
 
-export function buildTools(userId: number): {
+export type AgentTools = {
   definitions: ToolDef[];
   run(name: string, argsJson: string): Promise<string>;
-} {
+  /** Texto de confirmação autoritativo da proposta feita nesta rodada (null se nenhuma ativa). */
+  proposal(): string | null;
+  /** Descarta a pendência criada nesta rodada (rodada falhou); não toca pendência anterior. */
+  discardProposal(): void;
+};
+
+/**
+ * Uma instância por rodada do agente. `userText` é a mensagem atual do usuário: sem ela
+ * (ou se não for uma afirmação simples) `confirmar_lancamento` não executa.
+ */
+export function buildTools(userId: number, opts: { userText?: string } = {}): AgentTools {
   // Propor e confirmar na mesma rodada é proibido: a confirmação tem de vir do usuário.
-  let proposedThisRun = false;
+  let proposeCalled = false;
+  let proposalText: string | null = null;
+  const userAffirmed = opts.userText != null && isPlainAffirmation(opts.userText);
 
   async function dispatch(name: string, argsJson: string): Promise<string> {
     switch (name) {
-      case 'propor_lancamento':
-        proposedThisRun = true;
-        return proposeTx(userId, argsJson);
+      case 'propor_lancamento': {
+        proposeCalled = true;
+        if (proposalText) {
+          return 'Erro: um lançamento por vez. Mostre só a confirmação do primeiro e peça para o usuário enviar o outro depois.';
+        }
+        const r = await proposeTx(userId, argsJson);
+        if (r.ok) proposalText = r.text;
+        return r.text;
+      }
       case 'confirmar_lancamento':
-        if (proposedThisRun) {
+        if (proposeCalled) {
           return 'Erro: aguarde o usuário responder "sim" antes de confirmar. Mostre a pergunta de confirmação.';
+        }
+        if (!userAffirmed) {
+          return 'Erro: não posso confirmar: a mensagem atual do usuário não é um "sim" simples. Peça para ele responder *sim* ou *não* (ou proponha de novo se ele mudou os dados).';
         }
         return confirmPending(userId);
       case 'cancelar_lancamento':
+        proposalText = null;
         return cancelPending(userId);
       case 'consultar_resumo':
         return runShortcut(userId, 'resumo');
@@ -284,6 +336,13 @@ export function buildTools(userId: number): {
         console.error('[whatsapp] erro na ferramenta', { userId, name, err });
         return 'Erro ao acessar os dados agora. Avise o usuário para tentar de novo em instantes.';
       }
+    },
+    proposal() {
+      return proposalText && getPending(userId) ? proposalText : null;
+    },
+    discardProposal() {
+      if (proposalText) clearPending(userId);
+      proposalText = null;
     },
   };
 }

@@ -183,8 +183,111 @@ describe('runAgent', () => {
       },
       { content: 'Confirma?', toolCalls: [] },
     ]);
-    await runAgent(1, 'gastei 47', llm);
+    await runAgent(1, 'sim', llm);
     expect(m.create).not.toHaveBeenCalled();
     expect(getPending(1)).not.toBeNull();
+  });
+
+  const P47 = '{"type":"EXPENSE","amount":47,"description":"mercado","categoryId":10}';
+  const P20 = '{"type":"EXPENSE","amount":20,"description":"uber","categoryId":11}';
+  const C47 = 'Lançar *despesa* de *R$ 47,00* em *Mercado* hoje? Responda *sim* ou *não*';
+
+  it('duas propostas na rodada: primeira fica, segunda recusada, resposta = confirmação da primeira', async () => {
+    const { llm, calls } = fakeLlm([
+      {
+        content: null,
+        toolCalls: [
+          { id: '1', name: 'propor_lancamento', arguments: P47 },
+          { id: '2', name: 'propor_lancamento', arguments: P20 },
+        ],
+      },
+      { content: 'Lançar 47 no mercado e 20 no uber? Responda sim', toolCalls: [] },
+    ]);
+    const out = await runAgent(1, 'gastei 47 no mercado e 20 no uber', llm);
+    expect(out).toBe(C47);
+    expect(getPending(1)).toMatchObject({ amount: 47 });
+    const second = calls[1].messages.at(-1) as { content: string };
+    expect(second.content).toMatch(/um lançamento por vez/i);
+    expect(getHistory(1).at(-1)).toEqual({ role: 'assistant', content: C47 });
+  });
+
+  it('paráfrase do modelo é ignorada: resposta = texto da ferramenta', async () => {
+    const { llm } = fakeLlm([
+      { content: null, toolCalls: [{ id: '1', name: 'propor_lancamento', arguments: P47 }] },
+      { content: 'Vou lançar R$ 74 em Comida, ok?', toolCalls: [] },
+    ]);
+    expect(await runAgent(1, 'gastei 47 no mercado', llm)).toBe(C47);
+  });
+
+  it('proposta + conteúdo vazio no fim → devolve a confirmação', async () => {
+    const { llm } = fakeLlm([
+      { content: null, toolCalls: [{ id: '1', name: 'propor_lancamento', arguments: P47 }] },
+      { content: '', toolCalls: [] },
+    ]);
+    expect(await runAgent(1, 'gastei 47 no mercado', llm)).toBe(C47);
+    expect(getPending(1)).not.toBeNull();
+  });
+
+  it('proposta seguida de loop esgotado → sem pendência', async () => {
+    const { llm } = fakeLlm((i) =>
+      i === 0
+        ? { content: null, toolCalls: [{ id: '1', name: 'propor_lancamento', arguments: P47 }] }
+        : { content: null, toolCalls: [{ id: 'x', name: 'consultar_resumo', arguments: '{}' }] },
+    );
+    expect(await runAgent(1, 'gastei 47', llm)).toBe(FAIL);
+    expect(getPending(1)).toBeNull();
+    expect(getHistory(1)).toEqual([]);
+  });
+
+  it('proposta seguida de exceção do LLM → rejeita e sem pendência', async () => {
+    const { llm } = fakeLlm((i) => {
+      if (i === 0) return { content: null, toolCalls: [{ id: '1', name: 'propor_lancamento', arguments: P47 }] };
+      throw new Error('openai down');
+    });
+    await expect(runAgent(1, 'gastei 47', llm)).rejects.toThrow('openai down');
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('pendência anterior sobrevive a rodada que falha sem criar outra', async () => {
+    const first = fakeLlm([
+      { content: null, toolCalls: [{ id: '1', name: 'propor_lancamento', arguments: P47 }] },
+      { content: 'x', toolCalls: [] },
+    ]);
+    await runAgent(1, 'gastei 47', first.llm);
+    expect(getPending(1)).not.toBeNull();
+
+    const empty = fakeLlm([{ content: '', toolCalls: [] }]);
+    expect(await runAgent(1, 'e aí?', empty.llm)).toBe(FAIL);
+    expect(getPending(1)).toMatchObject({ amount: 47 });
+
+    const boom = fakeLlm(() => {
+      throw new Error('down');
+    });
+    await expect(runAgent(1, 'e aí?', boom.llm)).rejects.toThrow('down');
+    expect(getPending(1)).toMatchObject({ amount: 47 });
+  });
+
+  it('confirmar via agente: só com "sim" do usuário', async () => {
+    m.create.mockResolvedValue({ id: 1 });
+    const prop = fakeLlm([
+      { content: null, toolCalls: [{ id: '1', name: 'propor_lancamento', arguments: P47 }] },
+      { content: 'x', toolCalls: [] },
+    ]);
+    await runAgent(1, 'gastei 47', prop.llm);
+
+    const injected = fakeLlm([
+      { content: null, toolCalls: [{ id: '2', name: 'confirmar_lancamento', arguments: '{}' }] },
+      { content: 'feito', toolCalls: [] },
+    ]);
+    await runAgent(1, 'últimas transações', injected.llm);
+    expect(m.create).not.toHaveBeenCalled();
+
+    const ok = fakeLlm([
+      { content: null, toolCalls: [{ id: '3', name: 'confirmar_lancamento', arguments: '{}' }] },
+      { content: 'Lançado!', toolCalls: [] },
+    ]);
+    expect(await runAgent(1, 'pode lançar', ok.llm)).toBe('Lançado!');
+    expect(m.create).toHaveBeenCalledTimes(1);
+    expect(getPending(1)).toBeNull();
   });
 });

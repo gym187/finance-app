@@ -161,6 +161,23 @@ describe('propor_lancamento', () => {
     expect(getPending(1)?.date).toBe('2026-11-21');
   });
 
+  it('data a 367 dias → erro; a 365 dias → ok', async () => {
+    // hoje BR = 2026-11-21
+    const far = await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 10, date: '2027-11-23' });
+    expect(far).toMatch(/^Erro/);
+    expect(getPending(1)).toBeNull();
+    const past = await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 10, date: '2025-11-19' });
+    expect(past).toMatch(/^Erro/);
+    expect(getPending(1)).toBeNull();
+    const ok = await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 10, date: '2027-11-21' });
+    expect(ok).toBe('Lançar *despesa* de *R$ 5,00* em *Mercado* em 21/11/2027? Responda *sim* ou *não*');
+  });
+
+  it('ano diferente aparece como dd/mm/aaaa; mesmo ano como dd/mm', async () => {
+    const out = await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 10, date: '2025-12-31' });
+    expect(out).toContain('em 31/12/2025?');
+  });
+
   it('categoria inexistente cai em "Outros"', async () => {
     await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 999 });
     expect(getPending(1)).toMatchObject({ categoryId: 11, categoryName: 'Outros' });
@@ -271,19 +288,86 @@ describe('ferramentas confirmar/cancelar', () => {
     m.create.mockResolvedValue({ id: 1 });
     setPending(1, pendingBase);
     setPending(2, { ...pendingBase, amount: 99 });
-    const out = await buildTools(1).run('confirmar_lancamento', '{"userId":2}');
+    const out = await buildTools(1, { userText: 'sim' }).run('confirmar_lancamento', '{"userId":2}');
     expect(out).toMatch(/^✅/);
     expect(m.create).toHaveBeenCalledWith(1, expect.objectContaining({ amount: 47 }));
     expect(getPending(2)).not.toBeNull();
   });
 
   it('não confirma na mesma rodada em que propôs (exige resposta do usuário)', async () => {
-    const tools = buildTools(1);
+    const tools = buildTools(1, { userText: 'sim' });
     await tools.run('propor_lancamento', '{"type":"EXPENSE","amount":5,"description":"x","categoryId":10}');
     const out = await tools.run('confirmar_lancamento', '{}');
     expect(out).not.toMatch(/^✅/);
     expect(m.create).not.toHaveBeenCalled();
     expect(getPending(1)).not.toBeNull();
+  });
+
+  it.each(['últimas transações', 'sim, mas foi 57', 'não', 'sim 57', ''])(
+    'confirmar_lancamento bloqueado para %j',
+    async (text) => {
+      setPending(1, pendingBase);
+      const out = await buildTools(1, { userText: text }).run('confirmar_lancamento', '{}');
+      expect(out).toMatch(/não posso confirmar/i);
+      expect(m.create).not.toHaveBeenCalled();
+      expect(getPending(1)).not.toBeNull();
+    },
+  );
+
+  it('confirmar_lancamento bloqueado sem userText', async () => {
+    setPending(1, pendingBase);
+    const out = await buildTools(1).run('confirmar_lancamento', '{}');
+    expect(out).toMatch(/não posso confirmar/i);
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['sim', 'Pode lançar!', 'ok', 'Sim, confirmo'])('confirmar_lancamento permitido para %j', async (text) => {
+    m.create.mockResolvedValue({ id: 1 });
+    setPending(1, pendingBase);
+    const out = await buildTools(1, { userText: text }).run('confirmar_lancamento', '{}');
+    expect(out).toMatch(/^✅/);
+    expect(m.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('segunda proposta na mesma rodada é recusada e a primeira fica', async () => {
+    const tools = buildTools(1);
+    const first = await tools.run(
+      'propor_lancamento',
+      '{"type":"EXPENSE","amount":47,"description":"mercado","categoryId":10}',
+    );
+    const second = await tools.run(
+      'propor_lancamento',
+      '{"type":"EXPENSE","amount":20,"description":"uber","categoryId":11}',
+    );
+    expect(second).toMatch(/um lançamento por vez/i);
+    expect(getPending(1)).toMatchObject({ amount: 47, categoryId: 10 });
+    expect(tools.proposal()).toBe(first);
+  });
+
+  it('proposta inválida não impede nova tentativa na mesma rodada', async () => {
+    const tools = buildTools(1);
+    await tools.run('propor_lancamento', '{"type":"EXPENSE","amount":0,"description":"x"}');
+    const out = await tools.run('propor_lancamento', '{"type":"EXPENSE","amount":5,"description":"x","categoryId":10}');
+    expect(out).toMatch(/^Lançar/);
+  });
+
+  it('cancelar depois de propor zera a proposta da rodada', async () => {
+    const tools = buildTools(1);
+    await tools.run('propor_lancamento', '{"type":"EXPENSE","amount":5,"description":"x","categoryId":10}');
+    await tools.run('cancelar_lancamento', '{}');
+    expect(tools.proposal()).toBeNull();
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('discardProposal só limpa pendência criada na rodada', async () => {
+    setPending(1, pendingBase);
+    const t1 = buildTools(1);
+    t1.discardProposal();
+    expect(getPending(1)).not.toBeNull();
+    const t2 = buildTools(1);
+    await t2.run('propor_lancamento', '{"type":"EXPENSE","amount":5,"description":"x","categoryId":10}');
+    t2.discardProposal();
+    expect(getPending(1)).toBeNull();
   });
 
   it('cancelar_lancamento limpa só a do usuário', async () => {
