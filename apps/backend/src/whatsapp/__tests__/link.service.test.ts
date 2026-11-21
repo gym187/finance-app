@@ -78,11 +78,13 @@ describe('consumeLinkCode', () => {
     expect(where.id).toEqual({ not: 3 });
     expect(JSON.stringify(where.OR)).toContain('551199998888');
   });
-  it('phone null grava só o jid', async () => {
+  it('relink com phone null limpa o phone antigo; com phone, define', async () => {
     db.whatsappLinkCode.findUnique.mockResolvedValue({ userId: 3, code: '123456', expiresAt: future() });
     db.whatsappLinkCode.deleteMany.mockResolvedValue({ count: 1 });
     await consumeLinkCode('123456', 'x@lid', null);
-    expect(db.user.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { whatsappJid: 'x@lid' } });
+    expect(db.user.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { whatsappJid: 'x@lid', whatsappPhone: null } });
+    await consumeLinkCode('123456', 'y@s.whatsapp.net', '5511999998888');
+    expect(db.user.update).toHaveBeenLastCalledWith({ where: { id: 3 }, data: { whatsappJid: 'y@s.whatsapp.net', whatsappPhone: '5511999998888' } });
   });
 });
 

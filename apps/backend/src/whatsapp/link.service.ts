@@ -59,7 +59,7 @@ export async function consumeLinkCode(
 
     await tx.user.update({
       where: { id: entry.userId },
-      data: phone ? { whatsappJid: jid, whatsappPhone: phone } : { whatsappJid: jid },
+      data: { whatsappJid: jid, whatsappPhone: phone },
     });
     return { status: 'linked', userId: entry.userId };
   });
