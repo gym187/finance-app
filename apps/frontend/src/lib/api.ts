@@ -270,6 +270,16 @@ class ApiClient {
       }),
   };
 
+  // ─── WhatsApp ─────────────────────────────────────────────────────────────
+  whatsapp = {
+    status: () => this.request<ApiResponse<{ linked: boolean; phone: string | null }>>('/whatsapp/status'),
+    createLinkCode: () =>
+      this.request<ApiResponse<{ code: string; expiresAt: string; botNumber: string | null }>>('/whatsapp/link-code', {
+        method: 'POST',
+      }),
+    unlink: () => this.request<ApiResponse<null>>('/whatsapp/link', { method: 'DELETE' }),
+  };
+
   // ─── Exchange ─────────────────────────────────────────────────────────────
   exchange = {
     rates: () => this.request<ApiResponse<{ rates: Record<string, number>; currencies: string[] }>>('/exchange/rates'),

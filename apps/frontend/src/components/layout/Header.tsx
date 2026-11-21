@@ -18,6 +18,7 @@ const pathLabels: Record<string, string> = {
   '/budgets': 'Orçamentos',
   '/reports': 'Relatórios',
   '/calculadora': 'Calculadora de Juros',
+  '/whatsapp': 'WhatsApp',
 };
 
 export function Header() {

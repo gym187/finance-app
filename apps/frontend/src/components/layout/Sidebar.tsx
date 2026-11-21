@@ -16,6 +16,7 @@ import {
   Wallet,
   CreditCard,
   Calculator,
+  MessageCircle,
   ChevronDown,
   Landmark,
   CalendarRange,
@@ -69,6 +70,7 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/reports', label: 'Relatórios', icon: BarChart3 },
       { href: '/calculadora', label: 'Calculadora', icon: Calculator },
+      { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
     ],
   },
 ];
