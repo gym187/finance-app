@@ -9,8 +9,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import routes from './routes';
 import { errorHandler } from './middleware/error.middleware';
-import { webhookGuard } from './whatsapp/webhook.guard';
-import { whatsappWebhookController } from './whatsapp/webhook.controller';
+import { mountWhatsappWebhook } from './whatsapp/webhook.route';
 
 const app = express();
 
@@ -46,7 +45,7 @@ app.use(
 );
 
 // ─── WhatsApp webhook (antes do rate limit: tráfego interno do Evolution) ────
-app.post('/api/whatsapp/webhook', express.json({ limit: '2mb' }), webhookGuard, whatsappWebhookController);
+mountWhatsappWebhook(app);
 
 // ─── Rate limiting (apenas em produção) ──────────────────────────────────────
 if (env.NODE_ENV === 'production') {
