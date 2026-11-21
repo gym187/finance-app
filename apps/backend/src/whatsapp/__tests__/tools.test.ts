@@ -1,0 +1,383 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const m = vi.hoisted(() => ({
+  create: vi.fn(),
+  findAllTx: vi.fn(),
+  getData: vi.fn(),
+  findAllBudget: vi.fn(),
+  summary: vi.fn(),
+  findAllCat: vi.fn(),
+  groupBy: vi.fn(),
+}));
+vi.mock('../../services/transaction.service', () => ({
+  transactionService: { create: m.create, findAll: m.findAllTx },
+}));
+vi.mock('../../services/dashboard.service', () => ({ dashboardService: { getData: m.getData } }));
+vi.mock('../../services/budget.service', () => ({ budgetService: { findAll: m.findAllBudget } }));
+vi.mock('../../services/loan.service', () => ({ loanService: { summary: m.summary } }));
+vi.mock('../../services/category.service', () => ({ categoryService: { findAll: m.findAllCat } }));
+vi.mock('../../config/prisma', () => ({ prisma: { transaction: { groupBy: m.groupBy } } }));
+
+import {
+  getHistory,
+  appendHistory,
+  setPending,
+  getPending,
+  clearPending,
+  _resetConversations,
+} from '../conversation';
+import { buildTools, confirmPending, cancelPending } from '../tools';
+import type { LlmMessage } from '../llm';
+
+const MIN = 60_000;
+// 2026-11-21 15:00 UTC = 12:00 BR
+const T0 = Date.UTC(2026, 10, 21, 15, 0, 0);
+
+const CATS = [
+  { id: 10, name: 'Mercado', userId: 1 },
+  { id: 11, name: 'Outros', userId: 1 },
+  { id: 12, name: 'Salário', userId: 1 },
+];
+
+const pendingBase = {
+  type: 'EXPENSE' as const,
+  amount: 47,
+  description: 'Compras',
+  categoryId: 10,
+  categoryName: 'Mercado',
+  date: '2026-11-21',
+};
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(T0);
+  _resetConversations();
+  m.findAllCat.mockResolvedValue(CATS);
+});
+afterEach(() => vi.useRealTimers());
+
+describe('conversation', () => {
+  it('pendência expira após 10 min', () => {
+    setPending(1, pendingBase);
+    expect(getPending(1)).toMatchObject(pendingBase);
+    vi.setSystemTime(T0 + 10 * MIN - 1);
+    expect(getPending(1)).not.toBeNull();
+    vi.setSystemTime(T0 + 10 * MIN + 1);
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('usuário 1 não enxerga a pendência do usuário 2', () => {
+    setPending(2, pendingBase);
+    expect(getPending(1)).toBeNull();
+    expect(getPending(2)).not.toBeNull();
+    clearPending(1);
+    expect(getPending(2)).not.toBeNull();
+    clearPending(2);
+    expect(getPending(2)).toBeNull();
+  });
+
+  it('histórico mantém só as 10 últimas e é isolado por usuário', () => {
+    const msgs: LlmMessage[] = Array.from({ length: 13 }, (_, i) => ({
+      role: 'user' as const,
+      content: `m${i}`,
+    }));
+    appendHistory(1, msgs);
+    const h = getHistory(1);
+    expect(h).toHaveLength(10);
+    expect(h[0]).toEqual({ role: 'user', content: 'm3' });
+    expect(h[9]).toEqual({ role: 'user', content: 'm12' });
+    expect(getHistory(2)).toEqual([]);
+  });
+
+  it('histórico zera após 30 min sem uso', () => {
+    appendHistory(1, [{ role: 'user', content: 'oi' }]);
+    vi.setSystemTime(T0 + 29 * MIN);
+    expect(getHistory(1)).toHaveLength(1);
+    appendHistory(1, [{ role: 'assistant', content: 'olá' }]);
+    vi.setSystemTime(T0 + 29 * MIN + 30 * MIN + 1);
+    expect(getHistory(1)).toEqual([]);
+  });
+
+  it('getHistory devolve cópia (mutação externa não afeta o estado)', () => {
+    appendHistory(1, [{ role: 'user', content: 'oi' }]);
+    getHistory(1).push({ role: 'user', content: 'x' });
+    expect(getHistory(1)).toHaveLength(1);
+  });
+});
+
+describe('propor_lancamento', () => {
+  const propose = (args: unknown, userId = 1) =>
+    buildTools(userId).run('propor_lancamento', typeof args === 'string' ? args : JSON.stringify(args));
+
+  it.each([
+    ['zero', '{"type":"EXPENSE","amount":0,"description":"x"}'],
+    ['negativo', '{"type":"EXPENSE","amount":-50,"description":"x"}'],
+    ['string', '{"type":"EXPENSE","amount":"abc","description":"x"}'],
+    ['NaN (JSON inválido)', '{"type":"EXPENSE","amount":NaN,"description":"x"}'],
+    ['Infinity', '{"type":"EXPENSE","amount":1e999,"description":"x"}'],
+    ['ausente', '{"type":"EXPENSE","description":"x"}'],
+    ['acima do limite', '{"type":"EXPENSE","amount":10000001,"description":"x"}'],
+    ['arredonda para zero', '{"type":"EXPENSE","amount":0.001,"description":"x"}'],
+    ['type inválido', '{"type":"TRANSFER","amount":10,"description":"x"}'],
+    ['descrição vazia', '{"type":"EXPENSE","amount":10,"description":"   "}'],
+    ['descrição longa', JSON.stringify({ type: 'EXPENSE', amount: 10, description: 'a'.repeat(256) })],
+    ['data impossível', '{"type":"EXPENSE","amount":10,"description":"x","date":"2026-02-30"}'],
+    ['data mal formatada', '{"type":"EXPENSE","amount":10,"description":"x","date":"21/11/2026"}'],
+    ['lixo', 'não é json'],
+  ])('%s → erro, sem pendência e sem gravar', async (_label, json) => {
+    const out = await propose(json);
+    expect(typeof out).toBe('string');
+    expect(out.length).toBeGreaterThan(0);
+    expect(out).not.toMatch(/Responda \*sim\*/);
+    expect(getPending(1)).toBeNull();
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('proposta válida de 47 em Mercado → pendente e texto exato', async () => {
+    const out = await propose({ type: 'EXPENSE', amount: 47, description: 'Compras', categoryId: 10 });
+    expect(out).toBe('Lançar *despesa* de *R$ 47,00* em *Mercado* hoje? Responda *sim* ou *não*');
+    expect(getPending(1)).toMatchObject({ ...pendingBase });
+    expect(m.create).not.toHaveBeenCalled();
+    expect(m.findAllCat).toHaveBeenCalledWith(1);
+  });
+
+  it('receita em outra data → *receita* e "em dd/mm"', async () => {
+    const out = await propose({
+      type: 'INCOME',
+      amount: 1234.5,
+      description: '  Salário  ',
+      categoryId: 12,
+      date: '2026-11-05',
+    });
+    expect(out).toBe('Lançar *receita* de *R$ 1.234,50* em *Salário* em 05/11? Responda *sim* ou *não*');
+    expect(getPending(1)).toMatchObject({ description: 'Salário', date: '2026-11-05', type: 'INCOME' });
+  });
+
+  it('"hoje" usa a data do Brasil (01:00 UTC ainda é ontem no BR)', async () => {
+    vi.setSystemTime(Date.UTC(2026, 10, 22, 1, 0, 0));
+    const out = await propose({ type: 'EXPENSE', amount: 47, description: 'x', categoryId: 10 });
+    expect(out).toContain('hoje?');
+    expect(getPending(1)?.date).toBe('2026-11-21');
+  });
+
+  it('categoria inexistente cai em "Outros"', async () => {
+    await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 999 });
+    expect(getPending(1)).toMatchObject({ categoryId: 11, categoryName: 'Outros' });
+  });
+
+  it('categoria de outro usuário não é aceita (cai em "Outros")', async () => {
+    // 50 não está na lista do usuário 1
+    await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 50 });
+    expect(getPending(1)?.categoryId).toBe(11);
+  });
+
+  it('sem categoria e sem "Outros" cai na primeira', async () => {
+    m.findAllCat.mockResolvedValue([CATS[0], CATS[2]]);
+    await propose({ type: 'EXPENSE', amount: 5, description: 'x' });
+    expect(getPending(1)).toMatchObject({ categoryId: 10, categoryName: 'Mercado' });
+  });
+
+  it('usuário sem categorias → erro pedindo para criar', async () => {
+    m.findAllCat.mockResolvedValue([]);
+    const out = await propose({ type: 'EXPENSE', amount: 5, description: 'x' });
+    expect(out).toMatch(/crie uma categoria/i);
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('userId nos argumentos é ignorado', async () => {
+    await propose({ type: 'EXPENSE', amount: 5, description: 'x', categoryId: 10, userId: 999 });
+    expect(m.findAllCat).toHaveBeenCalledWith(1);
+    expect(m.findAllCat).not.toHaveBeenCalledWith(999);
+    expect(getPending(1)).not.toBeNull();
+    expect(getPending(999)).toBeNull();
+  });
+});
+
+describe('confirmPending / cancelPending', () => {
+  it('sem pendência → mensagem e não chama o service', async () => {
+    expect(await confirmPending(1)).toBe('Não há lançamento pendente.');
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('pendência expirada → mensagem e não chama o service', async () => {
+    setPending(1, pendingBase);
+    vi.setSystemTime(T0 + 11 * MIN);
+    expect(await confirmPending(1)).toBe('Não há lançamento pendente.');
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('com pendência → cria com currency BRL e limpa', async () => {
+    m.create.mockResolvedValue({ id: 1 });
+    setPending(1, pendingBase);
+    const out = await confirmPending(1);
+    expect(m.create).toHaveBeenCalledTimes(1);
+    expect(m.create).toHaveBeenCalledWith(1, {
+      description: 'Compras',
+      amount: 47,
+      type: 'EXPENSE',
+      categoryId: 10,
+      date: '2026-11-21',
+      currency: 'BRL',
+    });
+    expect(out).toBe('✅ Lançado: despesa de R$ 47,00 em Mercado (21/11).');
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('"sim" duplo concorrente cria uma única transação', async () => {
+    let resolve!: (v: unknown) => void;
+    m.create.mockReturnValue(new Promise((r) => (resolve = r)));
+    setPending(1, pendingBase);
+    const a = confirmPending(1);
+    const b = confirmPending(1);
+    resolve({ id: 1 });
+    const [ra, rb] = await Promise.all([a, b]);
+    expect(m.create).toHaveBeenCalledTimes(1);
+    expect(ra).toMatch(/^✅/);
+    expect(rb).toBe('Não há lançamento pendente.');
+  });
+
+  it('erro no service → mensagem genérica e pendência mantida para tentar de novo', async () => {
+    m.create.mockRejectedValueOnce(new Error('db down'));
+    setPending(1, pendingBase);
+    const out = await confirmPending(1);
+    expect(out).toMatch(/não consegui lançar/i);
+    expect(out).not.toMatch(/db down/);
+    expect(getPending(1)).toMatchObject(pendingBase);
+    m.create.mockResolvedValueOnce({ id: 1 });
+    expect(await confirmPending(1)).toMatch(/^✅/);
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('cancelPending limpa', () => {
+    setPending(1, pendingBase);
+    expect(cancelPending(1)).toMatch(/cancelado/i);
+    expect(getPending(1)).toBeNull();
+    expect(cancelPending(1)).toBe('Não há lançamento pendente.');
+  });
+
+  it('confirmPending(2) não confirma a pendência do usuário 1', async () => {
+    setPending(1, pendingBase);
+    expect(await confirmPending(2)).toBe('Não há lançamento pendente.');
+    expect(m.create).not.toHaveBeenCalled();
+    expect(getPending(1)).not.toBeNull();
+    cancelPending(2);
+    expect(getPending(1)).not.toBeNull();
+  });
+});
+
+describe('ferramentas confirmar/cancelar', () => {
+  it('confirmar_lancamento usa a pendência do usuário do buildTools', async () => {
+    m.create.mockResolvedValue({ id: 1 });
+    setPending(1, pendingBase);
+    setPending(2, { ...pendingBase, amount: 99 });
+    const out = await buildTools(1).run('confirmar_lancamento', '{"userId":2}');
+    expect(out).toMatch(/^✅/);
+    expect(m.create).toHaveBeenCalledWith(1, expect.objectContaining({ amount: 47 }));
+    expect(getPending(2)).not.toBeNull();
+  });
+
+  it('não confirma na mesma rodada em que propôs (exige resposta do usuário)', async () => {
+    const tools = buildTools(1);
+    await tools.run('propor_lancamento', '{"type":"EXPENSE","amount":5,"description":"x","categoryId":10}');
+    const out = await tools.run('confirmar_lancamento', '{}');
+    expect(out).not.toMatch(/^✅/);
+    expect(m.create).not.toHaveBeenCalled();
+    expect(getPending(1)).not.toBeNull();
+  });
+
+  it('cancelar_lancamento limpa só a do usuário', async () => {
+    setPending(1, pendingBase);
+    setPending(2, pendingBase);
+    await buildTools(1).run('cancelar_lancamento', '{}');
+    expect(getPending(1)).toBeNull();
+    expect(getPending(2)).not.toBeNull();
+  });
+});
+
+describe('consultas', () => {
+  it('definições expõem as 7 ferramentas', () => {
+    expect(buildTools(1).definitions.map((d) => d.name).sort()).toEqual(
+      [
+        'cancelar_lancamento',
+        'confirmar_lancamento',
+        'consultar_dividas',
+        'consultar_orcamentos',
+        'consultar_resumo',
+        'consultar_transacoes',
+        'propor_lancamento',
+      ].sort(),
+    );
+  });
+
+  it('consultar_resumo rotula mês e saldo atual', async () => {
+    m.getData.mockResolvedValue({ balance: 1000, totalIncome: 500, totalExpense: 200, monthlyBalance: 300 });
+    const out = await buildTools(1).run('consultar_resumo', '{"userId":999}');
+    expect(m.getData).toHaveBeenCalledWith(1);
+    expect(out).toContain('Receitas do mês: R$ 500,00');
+    expect(out).toContain('Despesas do mês: R$ 200,00');
+    expect(out).toContain('Saldo atual: R$ 1.000,00');
+  });
+
+  it('consultar_transacoes limita a 20, filtra por usuário e soma por tipo', async () => {
+    m.findAllTx.mockResolvedValue({
+      data: [
+        {
+          date: new Date('2026-11-20T00:00:00Z'),
+          description: 'Pão',
+          amount: -12.5,
+          type: 'EXPENSE',
+          category: { name: 'Mercado' },
+        },
+      ],
+      total: 42,
+    });
+    m.groupBy.mockResolvedValue([
+      { type: 'EXPENSE', _sum: { amount: -300 } },
+      { type: 'INCOME', _sum: { amount: 1000 } },
+    ]);
+    const out = await buildTools(1).run(
+      'consultar_transacoes',
+      JSON.stringify({ limit: 500, type: 'EXPENSE', startDate: '2026-11-01', endDate: '2026-11-30', userId: 999 }),
+    );
+    expect(m.findAllTx).toHaveBeenCalledWith(1, {
+      page: 1,
+      limit: 20,
+      type: 'EXPENSE',
+      categoryId: undefined,
+      startDate: '2026-11-01',
+      endDate: '2026-11-30T23:59:59.999Z',
+    });
+    const where = m.groupBy.mock.calls[0][0].where;
+    expect(where.userId).toBe(1);
+    expect(out).toContain('42');
+    expect(out).toContain('20/11 Pão — R$ 12,50 (Mercado)');
+    expect(out).toContain('R$ 300,00');
+  });
+
+  it('consultar_transacoes com data inválida → erro sem consultar', async () => {
+    const out = await buildTools(1).run('consultar_transacoes', '{"startDate":"2026-13-01"}');
+    expect(out.length).toBeGreaterThan(0);
+    expect(m.findAllTx).not.toHaveBeenCalled();
+  });
+
+  it('consultar_orcamentos e consultar_dividas usam o userId do buildTools', async () => {
+    m.findAllBudget.mockResolvedValue([]);
+    m.summary.mockResolvedValue({ activeCount: 0, totalDebt: 0, totalPaid: 0, nextDue: [] });
+    await buildTools(3).run('consultar_orcamentos', '{"userId":1}');
+    await buildTools(3).run('consultar_dividas', '{"userId":1}');
+    expect(m.findAllBudget).toHaveBeenCalledWith(3);
+    expect(m.summary).toHaveBeenCalledWith(3);
+  });
+
+  it('erro em service vira texto, não exceção', async () => {
+    m.getData.mockRejectedValue(new Error('boom'));
+    const out = await buildTools(1).run('consultar_resumo', '{}');
+    expect(typeof out).toBe('string');
+    expect(out).not.toContain('boom');
+  });
+
+  it('ferramenta desconhecida → texto', async () => {
+    expect(await buildTools(1).run('apagar_tudo', '{}')).toMatch(/desconhecida/i);
+  });
+});
