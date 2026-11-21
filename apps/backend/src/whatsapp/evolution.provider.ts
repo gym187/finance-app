@@ -23,6 +23,12 @@ const webhookSchema = z
   .passthrough();
 
 const REAL_JID_SUFFIX = '@s.whatsapp.net';
+/** Só conversas individuais (telefone ou LID) e grupos; status, listas de transmissão e canais são ignorados. */
+const ACCEPTED_JID_SUFFIXES = [REAL_JID_SUFFIX, '@lid', '@g.us'];
+/** Conteúdos que não são mensagens do usuário: ignorados em silêncio. */
+const IGNORED_MESSAGE_KEYS = ['reactionMessage', 'protocolMessage', 'senderKeyDistributionMessage'];
+/** Invólucros cujo conteúdo real está em `<chave>.message` (mensagens temporárias, visualização única). */
+const WRAPPER_KEYS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2'];
 
 function digitsOfRealJid(jid: string | null | undefined): string | null {
   if (!jid || !jid.endsWith(REAL_JID_SUFFIX)) return null;
@@ -32,6 +38,16 @@ function digitsOfRealJid(jid: string | null | undefined): string | null {
 
 function asRecord(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+function unwrapMessage(message: Record<string, unknown>): Record<string, unknown> {
+  let current = message;
+  for (let depth = 0; depth < 3; depth++) {
+    const inner = WRAPPER_KEYS.map((k) => asRecord(asRecord(current[k])?.message)).find((m) => m !== null);
+    if (!inner) break;
+    current = inner;
+  }
+  return current;
 }
 
 /**
@@ -47,11 +63,12 @@ function parseWebhook(body: unknown): IncomingMessage | null {
 
     const { key } = data;
     const jid = key.remoteJid;
+    if (!ACCEPTED_JID_SUFFIXES.some((suffix) => jid.endsWith(suffix))) return null;
     const isGroup = jid.endsWith('@g.us');
     const phone =
       digitsOfRealJid(jid) ?? digitsOfRealJid(key.remoteJidAlt) ?? digitsOfRealJid(data.senderPn);
 
-    const message = asRecord(data.message) ?? {};
+    const message = unwrapMessage(asRecord(data.message) ?? {});
     let kind: IncomingMessage['kind'] = 'other';
     let text: string | undefined;
     let audioSeconds: number | undefined;
@@ -67,6 +84,8 @@ function parseWebhook(body: unknown): IncomingMessage | null {
     } else if (audio) {
       kind = 'audio';
       if (typeof audio.seconds === 'number') audioSeconds = audio.seconds;
+    } else if (IGNORED_MESSAGE_KEYS.some((k) => k in message)) {
+      return null;
     }
 
     const msg: IncomingMessage = {

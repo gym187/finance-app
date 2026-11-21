@@ -78,6 +78,53 @@ describe('evolutionProvider.parseWebhook', () => {
     expect(m?.phone).toBe('5511999998888');
   });
 
+  it('ignora status, listas de transmissão e canais (null)', () => {
+    for (const remoteJid of ['status@broadcast', '120363012345678901@newsletter', 'x@broadcast', '5511999998888@c.us', 'semsufixo']) {
+      expect(evolutionProvider.parseWebhook(payload({ conversation: 'a' }, { remoteJid }))).toBeNull();
+    }
+  });
+
+  it('status@broadcast sem telefone não vira mensagem (sem resposta para o status)', () => {
+    expect(
+      evolutionProvider.parseWebhook(payload({ imageMessage: {} }, { remoteJid: 'status@broadcast', participant: '123@lid' })),
+    ).toBeNull();
+  });
+
+  it('ignora reação, protocolo e distribuição de chave (null, sem "Só entendo texto e áudio")', () => {
+    expect(evolutionProvider.parseWebhook(payload({ reactionMessage: { text: '👍', key: { id: 'X' } } }))).toBeNull();
+    expect(evolutionProvider.parseWebhook(payload({ protocolMessage: { type: 'REVOKE' } }))).toBeNull();
+    expect(
+      evolutionProvider.parseWebhook(payload({ senderKeyDistributionMessage: { groupId: 'g' }, messageContextInfo: {} })),
+    ).toBeNull();
+  });
+
+  it('distribuição de chave junto com texto continua sendo texto', () => {
+    const m = evolutionProvider.parseWebhook(payload({ senderKeyDistributionMessage: { groupId: 'g' }, conversation: 'oi' }));
+    expect(m?.kind).toBe('text');
+    expect(m?.text).toBe('oi');
+  });
+
+  it('desembrulha mensagens temporárias e de visualização única', () => {
+    const eph = evolutionProvider.parseWebhook(payload({ ephemeralMessage: { message: { extendedTextMessage: { text: 'gastei 5' } } } }));
+    expect(eph?.kind).toBe('text');
+    expect(eph?.text).toBe('gastei 5');
+    const ephConv = evolutionProvider.parseWebhook(payload({ ephemeralMessage: { message: { conversation: 'saldo' } } }));
+    expect(ephConv?.text).toBe('saldo');
+    const ephAudio = evolutionProvider.parseWebhook(payload({ ephemeralMessage: { message: { audioMessage: { seconds: 4 } } } }));
+    expect(ephAudio?.kind).toBe('audio');
+    expect(ephAudio?.audioSeconds).toBe(4);
+    const vo = evolutionProvider.parseWebhook(payload({ viewOnceMessage: { message: { audioMessage: { seconds: 3 } } } }));
+    expect(vo?.kind).toBe('audio');
+    const vo2 = evolutionProvider.parseWebhook(payload({ viewOnceMessageV2: { message: { conversation: 'oi' } } }));
+    expect(vo2?.text).toBe('oi');
+    const nested = evolutionProvider.parseWebhook(
+      payload({ ephemeralMessage: { message: { viewOnceMessageV2: { message: { audioMessage: {} } } } } }),
+    );
+    expect(nested?.kind).toBe('audio');
+    const ephReaction = evolutionProvider.parseWebhook(payload({ ephemeralMessage: { message: { reactionMessage: { text: '👍' } } } }));
+    expect(ephReaction).toBeNull();
+  });
+
   it('accepts MESSAGES_UPSERT', () => {
     expect(evolutionProvider.parseWebhook(payload({ conversation: 'a' }, {}, {}, 'MESSAGES_UPSERT'))).not.toBeNull();
   });
