@@ -36,6 +36,16 @@ services:
       WEBHOOK_URL: ${WEBHOOK_URL}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3002}
       NODE_OPTIONS: "--max-old-space-size=512"
+      # WhatsApp (módulo desativado se algum dos 5 obrigatórios estiver vazio)
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://evolution:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE}
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
+      WHATSAPP_BOT_NUMBER: ${WHATSAPP_BOT_NUMBER}
+      WHATSAPP_DAILY_LIMIT: ${WHATSAPP_DAILY_LIMIT:-100}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-5-nano}
+      OPENAI_TRANSCRIBE_MODEL: ${OPENAI_TRANSCRIBE_MODEL:-gpt-4o-mini-transcribe}
     ports:
       - "3001:3001"
     deploy:
@@ -49,6 +59,39 @@ services:
     #   - "traefik.http.routers.backend.entrypoints=websecure"
     #   - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
     #   - "traefik.http.services.backend.loadbalancer.server.port=3001"
+
+  # Evolution API (WhatsApp). Usa o banco "evolution" DENTRO do serviço postgres
+  # existente. NUNCA adicionar outro Postgres nem montar o volume pgdata aqui
+  # (incidente de corrupção de 2026-11-17). O backend NÃO depende deste serviço.
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: finance_evolution
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-finance}:${POSTGRES_PASSWORD:-finance123}@postgres:5432/evolution?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: finance_evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    deploy:
+      resources:
+        limits:
+          memory: 640M
 
   frontend:
     build:
@@ -97,4 +140,5 @@ services:
 
 volumes:
   pgdata:
+  evolution_instances:
   # traefik_certs:
