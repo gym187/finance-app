@@ -16,7 +16,7 @@ export function useWhatsappStatus(options?: { poll?: boolean }) {
   return useQuery({
     queryKey: ['whatsapp', 'status'],
     queryFn: async () => (await api.whatsapp.status()).data as WhatsappStatus,
-    refetchInterval: options?.poll ? 3000 : false,
+    refetchInterval: options?.poll ? 8000 : false,
   });
 }
 
