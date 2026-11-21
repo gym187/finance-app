@@ -151,6 +151,26 @@ docker logs --tail 100 finance_evolution
 ```
 Os logs do backend nao incluem conteudo de mensagens.
 
+## 8.1 Retencao de dados
+
+**Privacidade:** o banco `evolution` guarda o conteudo das mensagens do WhatsApp (texto recebido, codigos de vinculo, referencias de audio) e as respostas do bot, por usuario, sem prazo de expiracao. Trate esse banco como dado pessoal.
+
+O compose grava so o minimo: `DATABASE_SAVE_DATA_INSTANCE=true` (sessao), `DATABASE_SAVE_DATA_NEW_MESSAGE=true` (necessario: o download do audio em `getBase64FromMediaMessage` busca a mensagem no banco pelo `key.id`, conferido no codigo da tag 2.3.7) e `DATABASE_SAVE_MESSAGE_UPDATE`, `DATABASE_SAVE_DATA_CONTACTS`, `DATABASE_SAVE_DATA_CHATS` = `false` (na 2.3.7 essas flags so controlam gravacoes opcionais; `env.config.ts` trata ausente como `false`). O disco do servidor esta em ~81%: acompanhe o tamanho.
+
+Tamanho do banco e das tabelas (se o psql pedir senha, e a `EVOLUTION_DB_PASSWORD`):
+
+```bash
+docker exec finance_postgres psql -U evolution -d evolution -c "SELECT pg_size_pretty(pg_database_size('evolution'))" -c "\dt+ evolution_api.*"
+```
+
+Limpeza periodica de mensagens antigas (exemplo, 30 dias). **Confirme os nomes de tabela/coluna no schema da versao fixada antes de rodar** (na 2.3.7, `prisma/postgresql-schema.prisma`: tabela `"Message"` com `"messageTimestamp"` inteiro em segundos; `"MessageUpdate"` e `"Media"` apagam em cascata). Rode como o role `evolution`, nunca no `financedb`:
+
+```bash
+docker exec finance_postgres psql -U evolution -d evolution -v ON_ERROR_STOP=1 -c \
+  "DELETE FROM evolution_api.\"Message\" WHERE \"messageTimestamp\" < extract(epoch FROM now() - interval '30 days')::int"
+```
+Audios com mais de 30 dias deixam de poder ser baixados (o bot so precisa deles no momento em que chegam). Para agendar, use o cron do host com esse mesmo comando; `VACUUM` automatico recupera o espaco aos poucos.
+
 ## 9. Rollback
 
 - Desligar so o modulo: mantenha `EVOLUTION_API_KEY` preenchida (forte) e ESVAZIE `WHATSAPP_WEBHOOK_SECRET` no `.env` (isso sozinho desativa o modulo, conforme `whatsappEnabled` em `env.ts`); rode `docker compose up -d backend`. NAO esvazie `EVOLUTION_API_KEY` enquanto a Evolution existir: ela e a `AUTHENTICATION_API_KEY` da Evolution.

@@ -83,11 +83,14 @@ services:
       # EVOLUTION_DB_PASSWORD: segredo sem default (openssl rand -hex 24; só hex, sem escape na URI)
       DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@postgres:5432/evolution?schema=evolution_api
       DATABASE_CONNECTION_CLIENT_NAME: finance_evolution
+      # Retenção mínima (docs/whatsapp-setup.md "Retenção de dados"). NEW_MESSAGE fica
+      # true: getBase64FromMediaMessage busca a mensagem do áudio no banco por key.id.
+      # MESSAGE_UPDATE/CONTACTS/CHATS só controlam gravações opcionais (2.3.7).
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
-      DATABASE_SAVE_DATA_CONTACTS: "true"
-      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
       CACHE_REDIS_ENABLED: "false"
       CACHE_LOCAL_ENABLED: "true"
       WEBHOOK_GLOBAL_ENABLED: "false"
