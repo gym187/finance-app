@@ -99,6 +99,20 @@ export function recordLinkFailure(jid: string, now: number = Date.now()): void {
   if (globalLinkFailures.length > LINK_GLOBAL_MAX) globalLinkFailures = globalLinkFailures.slice(-LINK_GLOBAL_MAX);
 }
 
+/**
+ * Devolve a reserva mais recente do jid (tentativa que acabou em vínculo bem-sucedido):
+ * remove a última falha do jid e a mesma entrada da lista global. Sem entradas: no-op.
+ */
+export function releaseLinkAttempt(jid: string): void {
+  const own = linkFailures.get(jid);
+  if (!own || own.length === 0) return;
+  const ts = own.pop() as number;
+  if (own.length) linkFailures.set(jid, own);
+  else linkFailures.delete(jid);
+  const idx = globalLinkFailures.lastIndexOf(ts);
+  if (idx !== -1) globalLinkFailures.splice(idx, 1);
+}
+
 /** Apenas para testes. */
 export function _resetUsage(): void {
   users.clear();

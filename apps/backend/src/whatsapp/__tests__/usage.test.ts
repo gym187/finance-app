@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const envMock = vi.hoisted(() => ({ WHATSAPP_DAILY_LIMIT: 100 }));
 vi.mock('../../config/env', () => ({ env: envMock }));
 
-import { consume, allowUnknownReply, allowLinkAttempt, recordLinkFailure, _resetUsage } from '../usage';
+import { consume, allowUnknownReply, allowLinkAttempt, recordLinkFailure, releaseLinkAttempt, _resetUsage } from '../usage';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -98,5 +98,37 @@ describe('link attempts', () => {
     // o mais antigo foi descartado, então é tratado como novo
     expect(allowUnknownReply('u0', T0 + 1)).toBe(true);
     expect(allowUnknownReply('u10499', T0 + 1)).toBe(false);
+  });
+});
+
+describe('releaseLinkAttempt', () => {
+  it('reservar e liberar restaura allowLinkAttempt', () => {
+    for (let i = 0; i < 4; i++) recordLinkFailure('r1', T0 + i);
+    expect(allowLinkAttempt('r1', T0 + 10)).toBe(true);
+    recordLinkFailure('r1', T0 + 10); // reserva (5a)
+    expect(allowLinkAttempt('r1', T0 + 11)).toBe(false);
+    releaseLinkAttempt('r1');
+    expect(allowLinkAttempt('r1', T0 + 12)).toBe(true);
+  });
+
+  it('sem entradas é no-op', () => {
+    expect(() => releaseLinkAttempt('nada')).not.toThrow();
+    expect(allowLinkAttempt('nada', T0)).toBe(true);
+    // não mexe no global de outros jids
+    for (let j = 0; j < 10; j++) for (let i = 0; i < 5; i++) recordLinkFailure(`g${j}`, T0 + j * 5 + i);
+    releaseLinkAttempt('nada');
+    expect(allowLinkAttempt('novo', T0 + 100)).toBe(false);
+  });
+
+  it('remove do global a entrada do jid liberado', () => {
+    // 49 falhas de outros jids (timestamps antigos), reserva do jid alvo é a 50a
+    for (let j = 0; j < 49; j++) recordLinkFailure(`o${j}`, T0 + j);
+    recordLinkFailure('alvo', T0 + 500);
+    expect(allowLinkAttempt('novo', T0 + 501)).toBe(false);
+    releaseLinkAttempt('alvo');
+    expect(allowLinkAttempt('novo', T0 + 502)).toBe(true);
+    // as 49 de outros jids continuam: uma nova falha volta a fechar o limite
+    recordLinkFailure('o0', T0 + 503);
+    expect(allowLinkAttempt('novo', T0 + 504)).toBe(false);
   });
 });
