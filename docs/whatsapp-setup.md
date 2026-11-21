@@ -2,7 +2,7 @@
 
 Este documento e para o operador. Tudo que toca o servidor de producao (`ops@192.168.15.2`, `~/finance-app`) e MANUAL e deve ser feito com confirmacao explicita, uma acao por vez.
 
-Arquitetura: o app conversa com o WhatsApp via **Evolution API v2** (container `finance_evolution`, imagem `evoapicloud/evolution-api:v2.3.7`, fixada, nunca `latest`). A Evolution guarda seus dados no banco `evolution` **dentro do Postgres existente** (`finance_postgres`). A Evolution chama o backend em `POST http://backend:3001/api/whatsapp/webhook`; o backend responde via `POST /message/sendText/{instance}`.
+Arquitetura: o app conversa com o WhatsApp via **Evolution API v2** (container `finance_evolution`, imagem `evoapicloud/evolution-api:v2.3.7`, fixada, nunca `latest`). A Evolution guarda seus dados no banco `evolution` **dentro do Postgres existente** (`finance_postgres`), conectando com um role proprio `evolution` (dono apenas desse banco), nunca com o superusuario do app (`POSTGRES_USER`). A Evolution chama o backend em `POST http://backend:3001/api/whatsapp/webhook`; o backend responde via `POST /message/sendText/{instance}`.
 
 > REGRA DURA: nunca criar um segundo servico Postgres nem montar o volume `pgdata` em outro servico (incidente de corrupcao de 2026-11-17). A Evolution usa apenas um banco separado no Postgres que ja existe.
 
@@ -24,13 +24,16 @@ Arquitetura: o app conversa com o WhatsApp via **Evolution API v2** (container `
 ```bash
 openssl rand -hex 32   # EVOLUTION_API_KEY
 openssl rand -hex 32   # WHATSAPP_WEBHOOK_SECRET
+openssl rand -hex 24   # EVOLUTION_DB_PASSWORD (senha do role Postgres "evolution")
 ```
+Todos em hex de proposito: a `EVOLUTION_DB_PASSWORD` entra na connection string da Evolution, e hex nao precisa de escape na URI.
 
 ## 2. Variaveis no `.env` do servidor (nunca commitar)
 
 ```env
 EVOLUTION_API_KEY=<segredo 1>
 EVOLUTION_INSTANCE=appfin
+EVOLUTION_DB_PASSWORD=<segredo 3>   # sem default no compose: obrigatoria quando o profile whatsapp esta ativo
 WHATSAPP_WEBHOOK_SECRET=<segredo 2>
 WHATSAPP_BOT_NUMBER=55DDDNUMERODOBOT   # so digitos, com DDI, ex.: 5511999998888
 OPENAI_API_KEY=sk-...
@@ -46,20 +49,37 @@ COMPOSE_PROFILES=whatsapp   # habilita o servico evolution (veja abaixo)
 
 O modulo so liga se os cinco obrigatorios (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `WHATSAPP_WEBHOOK_SECRET`, `OPENAI_API_KEY`) estiverem preenchidos (`WHATSAPP_BOT_NUMBER` nao e obrigatorio para ligar o modulo, mas configure-o); caso contrario o backend sobe normalmente com o WhatsApp desativado.
 
-Se `POSTGRES_PASSWORD` tiver caracteres especiais (`@ : / ? #`), a connection string da Evolution quebra: use uma senha so com letras/numeros.
+A Evolution NAO recebe `POSTGRES_USER`/`POSTGRES_PASSWORD`: sua connection string usa o role `evolution` com `EVOLUTION_DB_PASSWORD` (gere com `openssl rand -hex 24`; caracteres como `@ : / ? #` quebrariam a URI, por isso so hex).
 
 Nota `OPENAI_TRANSCRIBE_MODEL`: `gpt-4o-mini-transcribe` e reportado como descontinuado em 2027-02-26 por rastreadores de terceiros (nao confirmado na pagina oficial); o nome substituto `gpt-transcribe` NAO foi verificado. Consulte a pagina de deprecations da OpenAI antes dessa data e ajuste a variavel.
 
-## 3. Criar o banco `evolution` (uma unica vez)
+## 3. Criar o role e o banco `evolution` (uma unica vez)
 
-O Postgres precisa estar de pe. O banco `evolution` NAO e criado automaticamente:
+O Postgres precisa estar de pe. O role e o banco `evolution` NAO sao criados automaticamente. A Evolution usa um role proprio, sem acesso ao `financedb`: se ela for comprometida, nao ganha leitura/escrita nos dados financeiros dos usuarios (o `POSTGRES_USER` do app e superusuario e dono do `financedb`).
+
+Execute em bash (nao em fish), colando a mesma `EVOLUTION_DB_PASSWORD` do `.env`:
 
 ```bash
-docker exec finance_postgres psql -U finance -d postgres -c "CREATE DATABASE evolution"
+read -rs EVOLUTION_DB_PASSWORD   # cola a senha (nao aparece no historico)
+docker exec -i finance_postgres psql -U finance -d postgres -v ON_ERROR_STOP=1 -v pw="$EVOLUTION_DB_PASSWORD" <<'SQL'
+CREATE ROLE evolution LOGIN PASSWORD :'pw';
+CREATE DATABASE evolution OWNER evolution;
+SQL
+unset EVOLUTION_DB_PASSWORD
 ```
-(`-U` deve ser o valor de `POSTGRES_USER` do `.env`; padrao `finance`. O `-d postgres` e obrigatorio: sem ele o psql tenta o banco `finance`, que nao existe, e falha com `database "finance" does not exist`.)
+Equivale a `CREATE ROLE evolution LOGIN PASSWORD '<hex aleatorio>'; CREATE DATABASE evolution OWNER evolution;`. `-U` deve ser o valor de `POSTGRES_USER` do `.env` (padrao `finance`). O `-d postgres` e obrigatorio: sem ele o psql tenta o banco `finance`, que nao existe, e falha com `database "finance" does not exist`. O role nasce sem SUPERUSER, CREATEDB e CREATEROLE (padrao do `CREATE ROLE`).
 
-ATENCAO: se a Evolution subir ANTES deste `CREATE DATABASE`, ela entra em loop de restart. Recuperacao: crie o banco e rode `docker compose restart evolution`. Conferir: `docker exec finance_postgres psql -U finance -d postgres -l | grep evolution`. A Evolution cria o schema `evolution_api` e roda as migrations sozinha ao subir.
+Se o banco `evolution` ja existir de uma versao anterior deste runbook (dono `finance`): se a Evolution NUNCA foi usada (nenhum QR escaneado), apague so ele e recrie com os comandos acima (`DROP DATABASE evolution;` conferindo o nome duas vezes; NUNCA `financedb`). Se ja estiver em uso, PARE e trate manualmente.
+
+ATENCAO: se a Evolution subir ANTES deste passo, ela entra em loop de restart. Recuperacao: crie o role e o banco e rode `docker compose --profile whatsapp restart evolution`. Conferir: `docker exec finance_postgres psql -U finance -d postgres -l | grep evolution` (dono deve ser `evolution`). A Evolution cria o schema `evolution_api` e roda as migrations sozinha ao subir.
+
+**O role `evolution` nao deve ter acesso ao `financedb`.** Ele nao recebe nenhum GRANT, mas por padrao do Postgres o pseudo-role `PUBLIC` tem `CONNECT` em todos os bancos. Conferir (nao deve listar nenhuma tabela):
+
+```bash
+docker exec finance_postgres psql -U finance -d financedb -c "\l financedb" \
+  -c "SELECT table_name, privilege_type FROM information_schema.role_table_grants WHERE grantee IN ('evolution','PUBLIC') AND table_schema = 'public'"
+```
+Hardening OPCIONAL, aplicar com cuidado e nunca automaticamente: `REVOKE CONNECT ON DATABASE financedb FROM PUBLIC;` seguido de `GRANT CONNECT ON DATABASE financedb TO finance;` (o `POSTGRES_USER`). Isso pode quebrar outros roles que hoje conectam ao `financedb` via `PUBLIC` (ex.: um role de leitura ou de backup); liste os roles com `\du` antes e conceda `CONNECT` a cada um que precise.
 
 ## 4. Subir
 

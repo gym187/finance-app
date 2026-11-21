@@ -63,6 +63,8 @@ services:
   # Evolution API (WhatsApp). Usa o banco "evolution" DENTRO do serviço postgres
   # existente. NUNCA adicionar outro Postgres nem montar o volume pgdata aqui
   # (incidente de corrupção de 2026-11-17). O backend NÃO depende deste serviço.
+  # Conecta com o role próprio "evolution" (dono só do banco evolution), nunca com
+  # o superusuário do app: veja docs/whatsapp-setup.md §3. Sem POSTGRES_PASSWORD aqui.
   evolution:
     image: evoapicloud/evolution-api:v2.3.7
     container_name: finance_evolution
@@ -78,7 +80,8 @@ services:
       SERVER_URL: http://localhost:8080
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
       DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-finance}:${POSTGRES_PASSWORD:-finance123}@postgres:5432/evolution?schema=evolution_api
+      # EVOLUTION_DB_PASSWORD: segredo sem default (openssl rand -hex 24; só hex, sem escape na URI)
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@postgres:5432/evolution?schema=evolution_api
       DATABASE_CONNECTION_CLIENT_NAME: finance_evolution
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
