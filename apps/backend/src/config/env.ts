@@ -31,7 +31,10 @@ const envSchema = z.object({
   EVOLUTION_INSTANCE: z.string().optional(),
   WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
   WHATSAPP_BOT_NUMBER: z.string().optional(),
-  WHATSAPP_DAILY_LIMIT: z.coerce.number().int().positive().default(100),
+  WHATSAPP_DAILY_LIMIT: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().int().positive().default(100),
+  ),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_CHAT_MODEL: z.string().default('gpt-5-nano'),
   OPENAI_TRANSCRIBE_MODEL: z.string().default('gpt-4o-mini-transcribe'),
