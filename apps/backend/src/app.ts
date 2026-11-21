@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
 import { env } from './config/env';
-import { logger } from './config/logger';
+import { logger, LOG_REDACT_PATHS } from './config/logger';
 import routes from './routes';
 import { errorHandler } from './middleware/error.middleware';
 import { mountWhatsappWebhook } from './whatsapp/webhook.route';
@@ -40,7 +40,7 @@ app.use(
     logger,
     customLogLevel: (_req, res) => (res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info'),
     customSuccessMessage: (req, res) => `${req.method} ${req.url} ${res.statusCode}`,
-    redact: ['req.headers.authorization', 'req.body.password'],
+    redact: LOG_REDACT_PATHS,
   })
 );
 
