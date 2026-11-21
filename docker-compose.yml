@@ -66,6 +66,10 @@ services:
   evolution:
     image: evoapicloud/evolution-api:v2.3.7
     container_name: finance_evolution
+    # Profile opt-in: um `docker compose up -d` normal NUNCA sobe a Evolution.
+    # Sem EVOLUTION_API_KEY ela cairia na chave padrao hardcoded (BQYHJGJHJ).
+    # Habilite com COMPOSE_PROFILES=whatsapp no .env.
+    profiles: ["whatsapp"]
     restart: unless-stopped
     depends_on:
       postgres:
