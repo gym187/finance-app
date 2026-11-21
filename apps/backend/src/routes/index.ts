@@ -14,6 +14,7 @@ import exchangeRoutes from './exchange.routes';
 import pushRoutes from './push.routes';
 import notificationRoutes from './notification.routes';
 import settingsRoutes from './settings.routes';
+import whatsappLinkRoutes from '../whatsapp/link.routes';
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use('/exchange', exchangeRoutes);
 router.use('/push', pushRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/whatsapp', whatsappLinkRoutes);
 
 export default router;
