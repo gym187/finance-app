@@ -34,6 +34,7 @@ EVOLUTION_INSTANCE=appfin
 WHATSAPP_WEBHOOK_SECRET=<segredo 2>
 WHATSAPP_BOT_NUMBER=55DDDNUMERODOBOT   # so digitos, com DDI, ex.: 5511999998888
 OPENAI_API_KEY=sk-...
+COMPOSE_PROFILES=whatsapp   # habilita o servico evolution (veja abaixo)
 # opcionais (ja tem default no compose):
 # EVOLUTION_API_URL=http://evolution:8080
 # WHATSAPP_DAILY_LIMIT=100
@@ -41,7 +42,9 @@ OPENAI_API_KEY=sk-...
 # OPENAI_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe
 ```
 
-O modulo so liga se os cinco obrigatorios (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `WHATSAPP_WEBHOOK_SECRET`, `WHATSAPP_BOT_NUMBER`, alem de `OPENAI_API_KEY`) estiverem preenchidos; caso contrario o backend sobe normalmente com o WhatsApp desativado.
+**Profile `whatsapp`:** o servico `evolution` esta sob `profiles: ["whatsapp"]`, entao um `docker compose up -d` comum NAO o sobe. Habilite com `COMPOSE_PROFILES=whatsapp` no `.env` (preferido: deploys futuros mantem a Evolution rodando) ou use `docker compose --profile whatsapp up -d`. `EVOLUTION_API_KEY` deve ser SEMPRE um valor aleatorio forte (>= 32 caracteres hex) quando o profile estiver ativo. Esvaziar `EVOLUTION_API_URL` no `.env` nao faz nada: o default `:-http://evolution:8080` do compose preenche de volta.
+
+O modulo so liga se os cinco obrigatorios (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `WHATSAPP_WEBHOOK_SECRET`, `OPENAI_API_KEY`) estiverem preenchidos (`WHATSAPP_BOT_NUMBER` nao e obrigatorio para ligar o modulo, mas configure-o); caso contrario o backend sobe normalmente com o WhatsApp desativado.
 
 Se `POSTGRES_PASSWORD` tiver caracteres especiais (`@ : / ? #`), a connection string da Evolution quebra: use uma senha so com letras/numeros.
 
@@ -52,15 +55,17 @@ Nota `OPENAI_TRANSCRIBE_MODEL`: `gpt-4o-mini-transcribe` e reportado como descon
 O Postgres precisa estar de pe. O banco `evolution` NAO e criado automaticamente:
 
 ```bash
-docker exec finance_postgres psql -U finance -c "CREATE DATABASE evolution"
+docker exec finance_postgres psql -U finance -d postgres -c "CREATE DATABASE evolution"
 ```
-(`-U` deve ser o valor de `POSTGRES_USER` do `.env`; padrao `finance`.) Conferir: `docker exec finance_postgres psql -U finance -l | grep evolution`. A Evolution cria o schema `evolution_api` e roda as migrations sozinha ao subir.
+(`-U` deve ser o valor de `POSTGRES_USER` do `.env`; padrao `finance`. O `-d postgres` e obrigatorio: sem ele o psql tenta o banco `finance`, que nao existe, e falha com `database "finance" does not exist`.)
+
+ATENCAO: se a Evolution subir ANTES deste `CREATE DATABASE`, ela entra em loop de restart. Recuperacao: crie o banco e rode `docker compose restart evolution`. Conferir: `docker exec finance_postgres psql -U finance -d postgres -l | grep evolution`. A Evolution cria o schema `evolution_api` e roda as migrations sozinha ao subir.
 
 ## 4. Subir
 
 ```bash
 cd ~/finance-app
-docker compose up -d --build
+docker compose up -d --build   # com COMPOSE_PROFILES=whatsapp no .env (ou --profile whatsapp)
 docker ps                       # 4 containers: postgres, backend, frontend, evolution
 docker logs -f finance_evolution
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api/health   # 200
@@ -77,7 +82,7 @@ ssh -L 8080:localhost:8080 ops@192.168.15.2
 Em outro terminal (local), com a chave `EVOLUTION_API_KEY` do `.env`:
 
 ```bash
-export EVO_KEY=<EVOLUTION_API_KEY>
+read -rs EVO_KEY   # cola a EVOLUTION_API_KEY (nao aparece no historico); depois: export EVO_KEY
 curl -s -X POST http://localhost:8080/instance/create \
   -H "apikey: $EVO_KEY" -H "Content-Type: application/json" \
   -d '{"instanceName":"appfin","qrcode":true,"integration":"WHATSAPP-BAILEYS"}'
@@ -98,6 +103,7 @@ Os dados da sessao ficam no volume `evolution_instances` e no banco `evolution`;
 (O webhook global da Evolution fica DESLIGADO; o registro e por instancia.) O corpo e aninhado em `webhook`:
 
 ```bash
+read -rs WHATSAPP_WEBHOOK_SECRET   # cola o segredo (fora do historico)
 curl -s -X POST http://localhost:8080/webhook/set/appfin \
   -H "apikey: $EVO_KEY" -H "Content-Type: application/json" \
   -d '{
@@ -106,7 +112,7 @@ curl -s -X POST http://localhost:8080/webhook/set/appfin \
       "url": "http://backend:3001/api/whatsapp/webhook",
       "byEvents": false,
       "base64": false,
-      "headers": { "x-webhook-secret": "<WHATSAPP_WEBHOOK_SECRET>" },
+      "headers": { "x-webhook-secret": "'"$WHATSAPP_WEBHOOK_SECRET"'" },
       "events": ["MESSAGES_UPSERT"]
     }
   }'
@@ -127,8 +133,8 @@ Os logs do backend nao incluem conteudo de mensagens.
 
 ## 9. Rollback
 
-- Desligar so o modulo: esvazie `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`, `WHATSAPP_WEBHOOK_SECRET`, `WHATSAPP_BOT_NUMBER` e `OPENAI_API_KEY` no `.env` e rode `docker compose up -d backend` (o backend recria sem o modulo).
-- Remover a Evolution: `docker compose rm -sf evolution` (nao toca no Postgres). O banco `evolution` pode ficar; para descartar: `docker exec finance_postgres psql -U finance -c "DROP DATABASE evolution"` (so com OK do operador).
+- Desligar so o modulo: mantenha `EVOLUTION_API_KEY` preenchida (forte) e ESVAZIE `WHATSAPP_WEBHOOK_SECRET` no `.env` (isso sozinho desativa o modulo, conforme `whatsappEnabled` em `env.ts`); rode `docker compose up -d backend`. NAO esvazie `EVOLUTION_API_KEY` enquanto a Evolution existir: ela e a `AUTHENTICATION_API_KEY` da Evolution.
+- Remover a Evolution: `docker compose --profile whatsapp rm -sf evolution` (nao toca no Postgres) e remova `whatsapp` de `COMPOSE_PROFILES` no `.env`, para um proximo `up -d` nao recria-la.
 - O backend nao depende da Evolution: se ela cair, o app segue funcionando.
 
 ## 10. Trocar o numero do bot
@@ -143,6 +149,8 @@ Os logs do backend nao incluem conteudo de mensagens.
 - O webhook exige o header `x-webhook-secret` e rejeita requisicoes que passaram pelo proxy da Cloudflare (so a Evolution, na rede interna do Docker, deve chama-lo). `POST` ao dominio publico deve dar 404.
 - A Evolution so escuta em `127.0.0.1:8080` e e acessada por tunel SSH. Nao exponha essa porta.
 - `.env` nunca e commitado; segredos gerados com `openssl rand -hex 32`.
+
+Chave de API vazia (verificado em `src/config/env.config.ts` da tag 2.3.7, https://raw.githubusercontent.com/EvolutionAPI/evolution-api/2.3.7/src/config/env.config.ts): `KEY: process.env.AUTHENTICATION_API_KEY || 'BQYHJGJHJ'`. Ou seja, variavel vazia ou ausente cai numa chave de exemplo hardcoded, e qualquer container da rede do compose (ou algo em 127.0.0.1) controlaria a sessao do WhatsApp. Por isso o servico fica atras do profile `whatsapp` e a chave deve ser sempre forte.
 
 ## 12. Verificacao ponta a ponta (com o numero real do bot)
 

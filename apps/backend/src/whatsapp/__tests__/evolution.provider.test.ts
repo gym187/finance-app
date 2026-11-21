@@ -115,6 +115,7 @@ describe('evolutionProvider HTTP', () => {
   it('sendText trunca o detalhe do erro em 200 caracteres', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'x'.repeat(1000) }));
     const err = await evolutionProvider.sendText('a@s.whatsapp.net', 'x').catch((e) => e as Error);
+    expect(err.message.startsWith('Evolution sendText falhou (500)')).toBe(true);
     expect(err.message.length).toBeLessThan(260);
   });
 
