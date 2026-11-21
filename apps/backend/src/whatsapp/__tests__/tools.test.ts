@@ -308,7 +308,7 @@ describe('ferramentas confirmar/cancelar', () => {
     expect(getPending(1)).not.toBeNull();
   });
 
-  it.each(['últimas transações', 'sim, mas foi 57', 'não', 'sim 57', ''])(
+  it.each(['últimas transações', 'sim, mas foi 57', 'não', 'sim 57', '', 'pode cancelar', 'sim espera', 'ok mas nao', 'sim, mas é outra categoria', 'ok, calma', 'sim errado', 'pode para'])(
     'confirmar_lancamento bloqueado para %j',
     async (text) => {
       setPending(1, pendingBase);
@@ -326,7 +326,7 @@ describe('ferramentas confirmar/cancelar', () => {
     expect(m.create).not.toHaveBeenCalled();
   });
 
-  it.each(['sim', 'Pode lançar!', 'ok', 'Sim, confirmo'])('confirmar_lancamento permitido para %j', async (text) => {
+  it.each(['sim', 'Pode lançar!', 'pode lançar', 'ok', 'ok!', 'Sim, confirmo'])('confirmar_lancamento permitido para %j', async (text) => {
     m.create.mockResolvedValue({ id: 1 });
     setPending(1, pendingBase);
     const out = await buildTools(1, { userText: text }).run('confirmar_lancamento', '{}');

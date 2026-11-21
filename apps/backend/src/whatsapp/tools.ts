@@ -24,13 +24,16 @@ const DAY_MS = 86_400_000;
 const AFFIRMATIVE = new Set([
   'sim', 'pode', 'confirmo', 'confirma', 'isso', 'ok', 'blz', 'beleza', 'certo', 'fechado', 'manda', 'lanca',
 ]);
+/** Palavras de negação/mudança: "sim, mas foi 57", "pode cancelar", "sim espera" não confirmam. */
+const NEGATION = new Set(['nao', 'cancela', 'cancelar', 'cancele', 'espera', 'errado', 'mas', 'calma', 'para']);
 
-/** Texto do usuário é uma afirmação simples ("sim", "pode lançar"), sem números. */
+/** Texto do usuário é uma afirmação simples ("sim", "pode lançar"), sem números nem negação. */
 export function isPlainAffirmation(text: string): boolean {
   const n = normalizeText(text);
   if (/\d/.test(n)) return false;
-  const first = n.split(' ')[0];
-  return AFFIRMATIVE.has(first);
+  const tokens = n.split(' ');
+  if (tokens.some((t) => NEGATION.has(t))) return false;
+  return AFFIRMATIVE.has(tokens[0]);
 }
 const DEFAULT_LIST = 10;
 
