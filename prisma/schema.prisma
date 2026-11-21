@@ -14,6 +14,9 @@ model User {
   password   String
   telegramId BigInt?  @unique // para vincular conta Telegram
 
+  whatsappPhone String? @unique // E.164 sem '+', normalizado
+  whatsappJid   String? @unique // JID/LID do WhatsApp
+
   emailVerified            Boolean   @default(false)
   emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
@@ -35,6 +38,17 @@ model User {
   pushSubscriptions     PushSubscription[]
   notifications         AppNotification[]
   settings              UserSettings?
+  whatsappLinkCode      WhatsappLinkCode?
+}
+
+model WhatsappLinkCode {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  code      String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model UserSettings {

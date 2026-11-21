@@ -25,6 +25,16 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_EMAIL: z.string().default('admin@appfin.dev'),
+  // WhatsApp assistant (Evolution API + OpenAI)
+  EVOLUTION_API_URL: z.string().optional(),
+  EVOLUTION_API_KEY: z.string().optional(),
+  EVOLUTION_INSTANCE: z.string().optional(),
+  WHATSAPP_WEBHOOK_SECRET: z.string().optional(),
+  WHATSAPP_BOT_NUMBER: z.string().optional(),
+  WHATSAPP_DAILY_LIMIT: z.coerce.number().int().positive().default(100),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_CHAT_MODEL: z.string().default('gpt-5-nano'),
+  OPENAI_TRANSCRIBE_MODEL: z.string().default('gpt-4o-mini-transcribe'),
 });
 
 const _env = envSchema.safeParse(process.env);
@@ -36,3 +46,11 @@ if (!_env.success) {
 }
 
 export const env = _env.data;
+
+export const whatsappEnabled = Boolean(
+  env.EVOLUTION_API_URL &&
+    env.EVOLUTION_API_KEY &&
+    env.EVOLUTION_INSTANCE &&
+    env.WHATSAPP_WEBHOOK_SECRET &&
+    env.OPENAI_API_KEY,
+);
