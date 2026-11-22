@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, TrendingUp } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -45,9 +45,7 @@ export default function LoginPage() {
     <div className="rounded-2xl border bg-card p-6 shadow-lg sm:p-8">
       {/* Logo */}
       <div className="mb-6 flex flex-col items-center gap-2 sm:mb-8">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <TrendingUp className="h-6 w-6" />
-        </div>
+        <img src="/icon.svg" alt="" aria-hidden className="h-12 w-12" />
         <h1 className="text-2xl font-bold">FinanceApp</h1>
         <p className="text-sm text-muted-foreground">Entre na sua conta</p>
       </div>

@@ -9,7 +9,6 @@ import {
   FolderOpen,
   Target,
   BarChart3,
-  TrendingUp,
   LogOut,
   LineChart,
   Repeat2,
@@ -221,9 +220,7 @@ function SidebarContent({
           onToggleCollapse ? 'cursor-pointer hover:bg-accent/50' : 'cursor-default'
         )}
       >
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <TrendingUp className="h-4 w-4" />
-        </div>
+        <img src="/icon.svg" alt="" aria-hidden className="h-8 w-8 flex-shrink-0" />
         {!collapsed && <span className="text-lg font-bold">FinanceApp</span>}
       </button>
 

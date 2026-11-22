@@ -13,6 +13,13 @@ const robotoMono = Roboto_Mono({
 export const metadata: Metadata = {
   title: 'AppFin — Controle Financeiro',
   description: 'Gerencie suas finanças pessoais com facilidade e inteligência.',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   appleWebApp: {
     capable: true,
     title: 'AppFin',
