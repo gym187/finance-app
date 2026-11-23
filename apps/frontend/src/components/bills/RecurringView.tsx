@@ -251,15 +251,6 @@ export function RecurringView() {
 
   const activeItems = items.filter((i) => i.isActive);
   const inactiveItems = items.filter((i) => !i.isActive);
-  const monthlyTotal = activeItems.reduce((sum, i) => {
-    const amt = Math.abs(Number(i.amount));
-    const multiplier =
-      i.frequency === 'DAILY' ? 30
-      : i.frequency === 'WEEKLY' ? 4.33
-      : i.frequency === 'BIWEEKLY' ? 2.17
-      : 1;
-    return i.type === 'EXPENSE' ? sum - amt * multiplier : sum + amt * multiplier;
-  }, 0);
 
   const monthlyExpense = activeItems
     .filter((i) => i.type === 'EXPENSE')
@@ -418,7 +409,7 @@ export function RecurringView() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
         {[
           {
             label: 'Receitas Fixas / mês',
@@ -431,12 +422,6 @@ export function RecurringView() {
             value: formatBRL(monthlyExpense),
             color: 'text-red-500',
             bg: 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800',
-          },
-          {
-            label: 'Saldo Recorrente / mês',
-            value: formatBRL(monthlyTotal),
-            color: monthlyTotal >= 0 ? 'text-blue-600' : 'text-red-500',
-            bg: 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800',
           },
         ].map((s) => (
           <Card key={s.label} className={cn('border', s.bg)}>
