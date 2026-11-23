@@ -69,6 +69,7 @@ export interface DashboardData {
   previousMonthBalance: number;
   balanceVariation: number;
   monthlyData: MonthlyData[];
+  dailyData?: DailyData[];
   categoryData: CategoryData[];
   budgetSummary: BudgetSummary[];
   alerts: Alert[];
@@ -93,6 +94,13 @@ export interface MonthlyData {
   income: number;
   expense: number;
   balance: number;
+}
+
+/** Um dia (YYYY-MM-DD, data do lançamento) dos últimos 30 dias. */
+export interface DailyData {
+  date: string;
+  income: number;
+  expense: number;
 }
 
 export interface CategoryData {

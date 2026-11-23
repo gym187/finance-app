@@ -73,6 +73,26 @@ export const dashboardService = {
       balance: d.income - d.expense,
     }));
 
+    // ─── Daily chart (last 30 days, by the transaction's own date) ───────────
+    // Datas guardadas como meia-noite UTC do dia local; `now` (nowBR) já está no horário do Brasil.
+    const dailyMap = new Map<string, { income: number; expense: number }>();
+    for (let i = 29; i >= 0; i--) {
+      const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - i));
+      dailyMap.set(day.toISOString().slice(0, 10), { income: 0, expense: 0 });
+    }
+    for (const t of last12MonthsTxs) {
+      const entry = dailyMap.get(t.date.toISOString().slice(0, 10));
+      if (entry) {
+        if (t.type === 'INCOME') entry.income += Number(t.amount);
+        else entry.expense += Math.abs(Number(t.amount));
+      }
+    }
+    const dailyData = Array.from(dailyMap.entries()).map(([date, d]) => ({
+      date,
+      income: d.income,
+      expense: d.expense,
+    }));
+
     // ─── Category pie (current month expenses) ────────────────────────────────
     const catMap = new Map<number, { name: string; value: number; color: string; icon?: string }>();
     for (const t of currentMonthTxs.filter((t) => t.type === 'EXPENSE')) {
@@ -206,6 +226,7 @@ export const dashboardService = {
       previousMonthBalance,
       balanceVariation,
       monthlyData,
+      dailyData,
       categoryData,
       budgetSummary,
       alerts,

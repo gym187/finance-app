@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatBRL, formatMonthLabel } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
-import type { MonthlyData } from '@finance-app/shared';
+import type { MonthlyData, DailyData } from '@finance-app/shared';
 
 type Period = '30d' | '6m' | '1y' | 'all';
 
@@ -46,12 +46,16 @@ const TooltipContent = ({ active, payload, label }: {
   );
 };
 
+/** "2026-11-22" -> "22/11" (sem fuso: a data já é o dia do lançamento). */
+const formatDayLabel = (isoDate: string): string => `${isoDate.slice(8, 10)}/${isoDate.slice(5, 7)}`;
+
 interface MonthlyChartProps {
   data?: MonthlyData[];
+  dailyData?: DailyData[];
   isLoading?: boolean;
 }
 
-export function MonthlyChart({ data, isLoading }: MonthlyChartProps) {
+export function MonthlyChart({ data, dailyData, isLoading }: MonthlyChartProps) {
   const [period, setPeriod] = useState<Period>('6m');
 
   const selected = PERIODS.find((p) => p.value === period)!;
@@ -61,9 +65,13 @@ export function MonthlyChart({ data, isLoading }: MonthlyChartProps) {
     month: formatMonthLabel(d.month),
   }));
 
-  const chartData = selected.months === null
-    ? allFormatted
-    : allFormatted.slice(-selected.months);
+  // "Últimos 30 dias" é dia a dia; os demais períodos são por mês.
+  const chartData =
+    period === '30d' && dailyData
+      ? dailyData.map((d) => ({ month: formatDayLabel(d.date), income: d.income, expense: d.expense }))
+      : selected.months === null
+        ? allFormatted
+        : allFormatted.slice(-selected.months);
 
   return (
     <Card>
@@ -95,6 +103,8 @@ export function MonthlyChart({ data, isLoading }: MonthlyChartProps) {
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
               <XAxis
                 dataKey="month"
+                interval={period === '30d' ? 'preserveStartEnd' : 0}
+                minTickGap={period === '30d' ? 24 : 5}
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}

@@ -31,7 +31,7 @@ export default function DashboardPage() {
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
         <CategoryPieChart data={data?.categoryData} isLoading={isLoading} />
-        <MonthlyChart data={data?.monthlyData} isLoading={isLoading} />
+        <MonthlyChart data={data?.monthlyData} dailyData={data?.dailyData} isLoading={isLoading} />
       </div>
 
       {/* Investimentos + Transações recentes */}
