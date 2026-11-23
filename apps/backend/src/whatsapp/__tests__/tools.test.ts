@@ -3,6 +3,8 @@ import { inspect } from 'util';
 
 const m = vi.hoisted(() => ({
   create: vi.fn(),
+  deleteTx: vi.fn(),
+  findFirstTx: vi.fn(),
   findAllTx: vi.fn(),
   getData: vi.fn(),
   findAllBudget: vi.fn(),
@@ -15,13 +17,13 @@ vi.mock('../../config/logger', () => ({
   logger: { error: m.logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../services/transaction.service', () => ({
-  transactionService: { create: m.create, findAll: m.findAllTx },
+  transactionService: { create: m.create, delete: m.deleteTx, findAll: m.findAllTx },
 }));
 vi.mock('../../services/dashboard.service', () => ({ dashboardService: { getData: m.getData } }));
 vi.mock('../../services/budget.service', () => ({ budgetService: { findAll: m.findAllBudget } }));
 vi.mock('../../services/loan.service', () => ({ loanService: { summary: m.summary } }));
 vi.mock('../../services/category.service', () => ({ categoryService: { findAll: m.findAllCat } }));
-vi.mock('../../config/prisma', () => ({ prisma: { transaction: { groupBy: m.groupBy } } }));
+vi.mock('../../config/prisma', () => ({ prisma: { transaction: { groupBy: m.groupBy, findFirst: m.findFirstTx } } }));
 
 import {
   getHistory,
@@ -406,6 +408,7 @@ describe('consultas', () => {
         'consultar_orcamentos',
         'consultar_resumo',
         'consultar_transacoes',
+        'propor_exclusao',
         'propor_lancamento',
       ].sort(),
     );
@@ -424,6 +427,7 @@ describe('consultas', () => {
     m.findAllTx.mockResolvedValue({
       data: [
         {
+          id: 31,
           date: new Date('2026-11-20T00:00:00Z'),
           description: 'Pão',
           amount: -12.5,
@@ -452,7 +456,7 @@ describe('consultas', () => {
     const where = m.groupBy.mock.calls[0][0].where;
     expect(where.userId).toBe(1);
     expect(out).toContain('42');
-    expect(out).toContain('20/11 Pão — R$ 12,50 (Mercado)');
+    expect(out).toContain('20/11 Pão — R$ 12,50 (Mercado) [id 31]');
     expect(out).toContain('R$ 300,00');
   });
 
@@ -500,5 +504,113 @@ describe('consultas', () => {
 
   it('ferramenta desconhecida → texto', async () => {
     expect(await buildTools(1).run('apagar_tudo', '{}')).toMatch(/desconhecida/i);
+  });
+});
+
+describe('exclusão de lançamento', () => {
+  const TX = {
+    id: 7,
+    userId: 1,
+    type: 'EXPENSE',
+    amount: -47,
+    description: 'Mercado\ndo mês',
+    date: new Date('2026-11-20T00:00:00Z'),
+    category: { name: 'Mercado' },
+  };
+
+  it('propor_exclusao busca só do próprio usuário e mostra o que será apagado', async () => {
+    m.findFirstTx.mockResolvedValue(TX);
+    const out = await buildTools(1).run('propor_exclusao', '{"transactionId":7,"userId":999}');
+    expect(m.findFirstTx.mock.calls[0][0].where).toEqual({ id: 7, userId: 1 });
+    expect(out).toContain('Excluir *despesa* de *R$ 47,00*');
+    expect(out).toContain('"Mercado do mês"');
+    expect(out).toContain('20/11');
+    expect(out).toContain('não pode ser desfeito');
+    expect(m.deleteTx).not.toHaveBeenCalled();
+    expect(getPending(1)).toMatchObject({ kind: 'delete', transactionId: 7 });
+  });
+
+  it('lançamento de outro usuário/inexistente: erro e nenhuma pendência', async () => {
+    m.findFirstTx.mockResolvedValue(null);
+    const out = await buildTools(1).run('propor_exclusao', '{"transactionId":7}');
+    expect(out).toMatch(/não encontrado/i);
+    expect(getPending(1)).toBeNull();
+  });
+
+  it.each(['{}', '{"transactionId":"7"}', '{"transactionId":-1}', '{"transactionId":1.5}', 'x'])(
+    'argumentos inválidos %j não consultam o banco',
+    async (args) => {
+      const out = await buildTools(1).run('propor_exclusao', args);
+      expect(out).toMatch(/^Erro/);
+      expect(m.findFirstTx).not.toHaveBeenCalled();
+    },
+  );
+
+  it('não confirma na mesma rodada em que propôs', async () => {
+    m.findFirstTx.mockResolvedValue(TX);
+    const tools = buildTools(1, { userText: 'sim' });
+    await tools.run('propor_exclusao', '{"transactionId":7}');
+    const out = await tools.run('confirmar_lancamento', '{}');
+    expect(out).not.toMatch(/Excluído/);
+    expect(m.deleteTx).not.toHaveBeenCalled();
+    expect(getPending(1)).not.toBeNull();
+  });
+
+  it('uma proposta por rodada (segunda é recusada)', async () => {
+    m.findFirstTx.mockResolvedValue(TX);
+    const tools = buildTools(1);
+    await tools.run('propor_exclusao', '{"transactionId":7}');
+    const out = await tools.run('propor_exclusao', '{"transactionId":8}');
+    expect(out).toMatch(/uma ação por vez/i);
+    expect(getPending(1)).toMatchObject({ transactionId: 7 });
+  });
+
+  it('confirmar com "sim" exclui com o userId do chamador', async () => {
+    m.deleteTx.mockResolvedValue(undefined);
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
+    setPending(2, { kind: 'delete', transactionId: 99, type: 'EXPENSE', amount: 5, description: 'x', categoryName: 'y', date: '2026-11-20' });
+    const out = await buildTools(1, { userText: 'sim' }).run('confirmar_lancamento', '{"userId":2,"transactionId":99}');
+    expect(out).toMatch(/^🗑️ Excluído/);
+    expect(m.deleteTx).toHaveBeenCalledTimes(1);
+    expect(m.deleteTx).toHaveBeenCalledWith(1, 7);
+    expect(getPending(1)).toBeNull();
+    expect(getPending(2)).not.toBeNull();
+  });
+
+  it.each(['sim, mas só o outro', 'não', 'sim 57', 'pode cancelar', ''])('confirmação bloqueada para %j', async (text) => {
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
+    const out = await buildTools(1, { userText: text }).run('confirmar_lancamento', '{}');
+    expect(out).toMatch(/não posso confirmar/i);
+    expect(m.deleteTx).not.toHaveBeenCalled();
+  });
+
+  it('"sim" duplo concorrente apaga uma vez só', async () => {
+    m.deleteTx.mockResolvedValue(undefined);
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
+    const [a, b] = await Promise.all([confirmPending(1), confirmPending(1)]);
+    expect(m.deleteTx).toHaveBeenCalledTimes(1);
+    expect([a, b].filter((x) => x.startsWith('🗑️'))).toHaveLength(1);
+  });
+
+  it('já excluído (404): avisa e limpa a pendência', async () => {
+    m.deleteTx.mockRejectedValue(Object.assign(new Error('x'), { statusCode: 404 }));
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
+    const out = await confirmPending(1);
+    expect(out).toMatch(/não existe mais/);
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('falha ao excluir: mantém a pendência para tentar de novo', async () => {
+    m.deleteTx.mockRejectedValue(new Error('db'));
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
+    const out = await confirmPending(1);
+    expect(out).toMatch(/Não consegui excluir/);
+    expect(getPending(1)).toMatchObject({ kind: 'delete', transactionId: 7 });
+  });
+
+  it('cancelar exclusão diz que nada foi apagado', () => {
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
+    expect(cancelPending(1)).toMatch(/Nada foi apagado/);
+    expect(getPending(1)).toBeNull();
   });
 });

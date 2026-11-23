@@ -3,6 +3,7 @@ import { inspect } from 'util';
 
 const m = vi.hoisted(() => ({
   create: vi.fn(),
+  deleteTx: vi.fn(),
   findAllTx: vi.fn(),
   getData: vi.fn(),
   findAllBudget: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock('../../config/logger', () => ({
 }));
 vi.mock('../../config/prisma', () => ({ prisma: {} }));
 vi.mock('../../services/transaction.service', () => ({
-  transactionService: { create: m.create, findAll: m.findAllTx },
+  transactionService: { create: m.create, delete: m.deleteTx, findAll: m.findAllTx },
 }));
 vi.mock('../../services/dashboard.service', () => ({ dashboardService: { getData: m.getData } }));
 vi.mock('../../services/budget.service', () => ({ budgetService: { findAll: m.findAllBudget } }));
@@ -40,7 +41,7 @@ vi.mock('../agent', () => ({ runAgent: m.runAgent }));
 import { handleIncoming } from '../handler';
 import { createWebhookController } from '../webhook.controller';
 import { _resetUsage } from '../usage';
-import { _resetConversations, setPending, getHistory } from '../conversation';
+import { _resetConversations, setPending, getPending, getHistory } from '../conversation';
 import type { IncomingMessage, WhatsappProvider } from '../provider';
 import type { LlmClient } from '../llm';
 
@@ -382,6 +383,25 @@ describe('handleIncoming — vinculado', () => {
       llm: fakeLlm('quanto gastei?'),
     });
     expect(sent[0].text).toBe('resposta do agente');
+  });
+
+  it('"sim" por áudio NÃO confirma exclusão pendente', async () => {
+    const { provider, sent } = fakeProvider();
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-21' });
+    await handleIncoming(msg({ kind: 'audio', text: undefined, audioSeconds: 2 }), { provider, llm: fakeLlm('sim') });
+    expect(m.deleteTx).not.toHaveBeenCalled();
+    expect(m.runAgent).not.toHaveBeenCalled();
+    expect(sent[0].text).toContain('por texto');
+    expect(getPending(1)).not.toBeNull();
+  });
+
+  it('"sim" por texto confirma a exclusão pendente', async () => {
+    const { provider, sent } = fakeProvider();
+    m.deleteTx.mockResolvedValue(undefined);
+    setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-21' });
+    await handleIncoming(msg({ text: 'sim' }), { provider, llm: fakeLlm() });
+    expect(m.deleteTx).toHaveBeenCalledWith(1, 7);
+    expect(sent[0].text).toContain('🗑️ Excluído');
   });
 
   it('áudio transcrito como atalho passa pelo atalho', async () => {

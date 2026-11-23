@@ -115,7 +115,13 @@ async function handleLinked(userId: number, msg: IncomingMessage, deps: HandlerD
     if (!text) return;
   }
 
-  const shortcut = matchShortcut(text, getPending(userId) !== null);
+  const pendingNow = getPending(userId);
+  const shortcut = matchShortcut(text, pendingNow !== null);
+  if (shortcut === 'sim' && transcription !== null && pendingNow?.kind === 'delete') {
+    // Exclusão não se confirma por áudio: uma transcrição errada apagaria dados.
+    await reply(deps, msg, 'Para excluir, confirme digitando *sim* (por texto, não por áudio).');
+    return;
+  }
   if (shortcut === 'sim' || shortcut === 'nao') {
     const out = shortcut === 'sim' ? await confirmPending(userId) : cancelPending(userId);
     appendHistory(userId, [

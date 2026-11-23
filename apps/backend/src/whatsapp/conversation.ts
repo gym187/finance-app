@@ -6,6 +6,7 @@ import type { LlmMessage } from './llm';
  */
 
 export type PendingTx = {
+  kind?: 'create';
   type: 'INCOME' | 'EXPENSE';
   amount: number;
   description: string;
@@ -15,6 +16,21 @@ export type PendingTx = {
   expiresAt: number;
 };
 
+/** Exclusão proposta de UM lançamento do próprio usuário, aguardando "sim". */
+export type PendingDelete = {
+  kind: 'delete';
+  transactionId: number;
+  type: 'INCOME' | 'EXPENSE';
+  amount: number;
+  description: string;
+  categoryName: string;
+  date: string; // YYYY-MM-DD
+  expiresAt: number;
+};
+
+export type Pending = PendingTx | PendingDelete;
+export type NewPending = Omit<PendingTx, 'expiresAt'> | Omit<PendingDelete, 'expiresAt'>;
+
 const HISTORY_MAX = 10;
 const HISTORY_IDLE_MS = 30 * 60_000;
 const PENDING_TTL_MS = 10 * 60_000;
@@ -23,7 +39,7 @@ const MAX_ENTRIES = 5_000;
 type Conversation = { messages: LlmMessage[]; lastUsed: number };
 
 const conversations = new Map<number, Conversation>();
-const pendings = new Map<number, PendingTx>();
+const pendings = new Map<number, Pending>();
 
 /** Remove o mais antigo (ordem de inserção) se o Map passou do limite. */
 function cap<V>(map: Map<number, V>, isStale: (v: V) => boolean): void {
@@ -60,14 +76,14 @@ export function appendHistory(userId: number, msgs: LlmMessage[]): void {
   cap(conversations, (c) => now - c.lastUsed > HISTORY_IDLE_MS);
 }
 
-export function setPending(userId: number, p: Omit<PendingTx, 'expiresAt'>): void {
+export function setPending(userId: number, p: NewPending): void {
   const now = Date.now();
   pendings.delete(userId);
-  pendings.set(userId, { ...p, expiresAt: now + PENDING_TTL_MS });
+  pendings.set(userId, { ...p, expiresAt: now + PENDING_TTL_MS } as Pending);
   cap(pendings, (v) => v.expiresAt <= now);
 }
 
-export function getPending(userId: number): PendingTx | null {
+export function getPending(userId: number): Pending | null {
   const p = pendings.get(userId);
   if (!p) return null;
   if (p.expiresAt <= Date.now()) {
@@ -85,7 +101,7 @@ export function clearPending(userId: number): void {
  * Devolve uma pendência retirada (ex.: falha ao gravar), mantendo o prazo original,
  * desde que não tenha expirado nem sido substituída por outra.
  */
-export function restorePending(userId: number, p: PendingTx): void {
+export function restorePending(userId: number, p: Pending): void {
   if (p.expiresAt <= Date.now() || getPending(userId) !== null) return;
   pendings.set(userId, { ...p });
 }

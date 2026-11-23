@@ -7,7 +7,7 @@ import { categoryService } from '../services/category.service';
 import { runShortcut } from './shortcuts';
 import { formatBRL, normalizeText } from './format';
 import type { ToolDef } from './llm';
-import { getPending, setPending, clearPending, restorePending } from './conversation';
+import { getPending, setPending, clearPending, restorePending, type PendingDelete } from './conversation';
 import { safeErr } from './log';
 
 /*
@@ -74,6 +74,10 @@ const proposeSchema = z.object({
   description: z.string().trim().min(1, 'descrição vazia').max(255, 'descrição muito longa'),
   categoryId: z.number().int().positive().nullish(),
   date: isoDate.nullish(),
+});
+
+const deleteSchema = z.object({
+  transactionId: z.number({ invalid_type_error: 'transactionId deve ser número' }).int().positive(),
 });
 
 const listSchema = z.object({
@@ -150,11 +154,64 @@ async function proposeTx(userId: number, argsJson: string): Promise<ProposeResul
   };
 }
 
+/** Texto sem quebras de linha nem excesso de tamanho (a descrição é dado do usuário). */
+function oneLine(text: string, max = 60): string {
+  return text.replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+async function proposeDelete(userId: number, argsJson: string): Promise<ProposeResult> {
+  const parsed = parseArgs(deleteSchema, argsJson);
+  if (!parsed.ok) return { ok: false, text: parsed.error };
+
+  // Só lançamento do próprio usuário; o id vem de consultar_transacoes.
+  const tx = await prisma.transaction.findFirst({
+    where: { id: parsed.data.transactionId, userId },
+    include: { category: { select: { name: true } } },
+  });
+  if (!tx) {
+    return {
+      ok: false,
+      text: 'Erro: lançamento não encontrado. Use consultar_transacoes para achar o id certo e tente de novo.',
+    };
+  }
+
+  const amount = Math.abs(Number(tx.amount));
+  const categoryName = tx.category?.name ?? 'sem categoria';
+  setPending(userId, {
+    kind: 'delete',
+    transactionId: tx.id,
+    type: tx.type,
+    amount,
+    description: oneLine(tx.description),
+    categoryName,
+    date: tx.date.toISOString().slice(0, 10),
+  });
+  return {
+    ok: true,
+    text: `Excluir *${typeLabel(tx.type)}* de *${formatBRL(amount)}* "${oneLine(tx.description)}" (${categoryName}) de ${ddmmMaybeYear(tx.date.toISOString().slice(0, 10))}? Isso não pode ser desfeito. Responda *sim* ou *não*`,
+  };
+}
+
+async function confirmDelete(userId: number, p: PendingDelete): Promise<string> {
+  try {
+    await transactionService.delete(userId, p.transactionId);
+  } catch (err) {
+    if ((err as { statusCode?: number }).statusCode === 404) {
+      return 'Esse lançamento não existe mais (talvez já tenha sido excluído).';
+    }
+    logger.error({ err: safeErr(err), userId }, '[whatsapp] falha ao excluir lançamento');
+    restorePending(userId, p);
+    return 'Não consegui excluir agora. Tente responder *sim* de novo em instantes.';
+  }
+  return `🗑️ Excluído: ${typeLabel(p.type)} de ${formatBRL(p.amount)} "${p.description}" (${ddmmMaybeYear(p.date)}).`;
+}
+
 export async function confirmPending(userId: number): Promise<string> {
   const p = getPending(userId);
   if (!p) return NO_PENDING;
   // Limpa ANTES do await: um segundo "sim" concorrente não encontra pendência.
   clearPending(userId);
+  if (p.kind === 'delete') return confirmDelete(userId, p);
   try {
     await transactionService.create(userId, {
       description: p.description,
@@ -173,9 +230,10 @@ export async function confirmPending(userId: number): Promise<string> {
 }
 
 export function cancelPending(userId: number): string {
-  if (!getPending(userId)) return NO_PENDING;
+  const p = getPending(userId);
+  if (!p) return NO_PENDING;
   clearPending(userId);
-  return 'Lançamento cancelado.';
+  return p.kind === 'delete' ? 'Exclusão cancelada. Nada foi apagado.' : 'Lançamento cancelado.';
 }
 
 async function listTx(userId: number, argsJson: string): Promise<string> {
@@ -212,7 +270,7 @@ async function listTx(userId: number, argsJson: string): Promise<string> {
     Math.abs(Number(sums.find((s) => s.type === t)?._sum.amount ?? 0));
   const lines = page.data.map((t) => {
     const cat = t.category?.name ? ` (${t.category.name})` : '';
-    return `${t.type === 'INCOME' ? '🟢' : '🔴'} ${ddmm(t.date)} ${t.description} — ${formatBRL(Math.abs(Number(t.amount)))}${cat}`;
+    return `${t.type === 'INCOME' ? '🟢' : '🔴'} ${ddmm(t.date)} ${t.description} — ${formatBRL(Math.abs(Number(t.amount)))}${cat} [id ${t.id}]`;
   });
   return [
     `Total de lançamentos encontrados: ${page.total} (mostrando ${page.data.length}).`,
@@ -241,13 +299,25 @@ const definitions: ToolDef[] = [
     },
   },
   {
+    name: 'propor_exclusao',
+    description:
+      'Prepara a exclusão de UM lançamento (NÃO apaga). O transactionId vem de consultar_transacoes ([id N]); nunca invente. Depois, mostre o texto de confirmação devolvido e espere o usuário responder "sim".',
+    parameters: {
+      type: 'object',
+      properties: { transactionId: { type: 'integer', description: 'id do lançamento, como aparece em consultar_transacoes' } },
+      required: ['transactionId'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'confirmar_lancamento',
-    description: 'Grava o lançamento pendente. Use só depois que o usuário respondeu "sim" em uma nova mensagem.',
+    description:
+      'Grava o lançamento pendente, ou exclui o lançamento pendente de exclusão. Use só depois que o usuário respondeu "sim" em uma nova mensagem.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'cancelar_lancamento',
-    description: 'Descarta o lançamento pendente.',
+    description: 'Descarta o lançamento ou a exclusão pendente.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -309,6 +379,15 @@ export function buildTools(userId: number, opts: { userText?: string } = {}): Ag
           return 'Erro: um lançamento por vez. Mostre só a confirmação do primeiro e peça para o usuário enviar o outro depois.';
         }
         const r = await proposeTx(userId, argsJson);
+        if (r.ok) proposalText = r.text;
+        return r.text;
+      }
+      case 'propor_exclusao': {
+        proposeCalled = true;
+        if (proposalText) {
+          return 'Erro: uma ação por vez. Mostre só a confirmação da primeira e peça para o usuário enviar a outra depois.';
+        }
+        const r = await proposeDelete(userId, argsJson);
         if (r.ok) proposalText = r.text;
         return r.text;
       }

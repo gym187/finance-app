@@ -31,6 +31,7 @@ async function systemPrompt(userId: number): Promise<string> {
     '- Respostas curtas e diretas, formatadas para WhatsApp (*negrito* com um asterisco).',
     '- Valores sempre no formato R$ 1.234,56.',
     '- NUNCA grave um lançamento sem confirmação explícita do usuário: use sempre propor_lancamento, mostre a pergunta de confirmação devolvida e espere o usuário responder "sim" em uma nova mensagem. Só então use confirmar_lancamento.',
+    '- Para EXCLUIR um lançamento: ache-o com consultar_transacoes (cada linha traz [id N]), use propor_exclusao com esse id, mostre a pergunta de confirmação devolvida e espere o usuário responder "sim" em uma nova mensagem; só então use confirmar_lancamento. Exclua um lançamento por vez; nunca em lote, nunca invente id. Se houver mais de um candidato, liste e pergunte qual. Não mostre os ids ao usuário.',
     '- Se o valor estiver faltando ou ambíguo, pergunte antes de propor.',
     '- Um lançamento por vez: se o usuário citar vários, proponha só o primeiro e peça para enviar os outros depois.',
     '- Escolha a categoria só da lista abaixo, pelo id. Não invente categorias nem ids; se nenhuma servir, omita categoryId.',
@@ -47,7 +48,7 @@ async function systemPrompt(userId: number): Promise<string> {
  * Executa o agente para `userId`. As ferramentas são construídas com esse userId e
  * nenhum argumento do modelo troca o usuário. Erros do LlmClient propagam para o chamador.
  *
- * Se a rodada propôs um lançamento, a resposta é EXATAMENTE o texto de confirmação da
+ * Se a rodada propôs um lançamento ou uma exclusão, a resposta é EXATAMENTE o texto de confirmação da
  * ferramenta (o usuário confirma o que será gravado, não a paráfrase do modelo). Se a
  * rodada não terminar com resposta (falha ou exceção), a pendência criada nela é descartada.
  */

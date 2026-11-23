@@ -68,7 +68,7 @@ describe('runAgent', () => {
     expect(sys.content).toContain('Mercado');
     expect(sys.content).toMatch(/confirma/i);
     expect(calls[0].messages.at(-1)).toEqual({ role: 'user', content: 'oi' });
-    expect(calls[0].tools.length).toBe(7);
+    expect(calls[0].tools.length).toBe(8);
     expect(getHistory(1)).toEqual([
       { role: 'user', content: 'oi' },
       { role: 'assistant', content: 'Olá!' },
