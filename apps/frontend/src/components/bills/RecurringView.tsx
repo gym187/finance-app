@@ -241,7 +241,7 @@ const FREQ_COLORS: Record<RecurrencyFreq, string> = {
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-export default function RecurringPage() {
+export function RecurringView() {
   const { data: items = [], isLoading, refetch } = useRecurring();
   const { data: categories = [] } = useCategories();
   const { create, update, remove, toggle } = useRecurringMutations();
@@ -400,7 +400,7 @@ export default function RecurringPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold sm:text-2xl">Contas Recorrentes</h2>
+          <h2 className="text-lg font-semibold">Contas fixas</h2>
           <p className="text-sm text-muted-foreground">
             Receitas e despesas fixas geradas automaticamente
           </p>

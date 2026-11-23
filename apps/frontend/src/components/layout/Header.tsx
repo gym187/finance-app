@@ -10,10 +10,9 @@ import { NotificationCenter } from '@/components/layout/NotificationCenter';
 const pathLabels: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/transactions': 'Transações',
-  '/recurring': 'Contas Recorrentes',
+  '/bills': 'Contas a pagar',
   '/investments': 'Investimentos',
   '/goals': 'Metas de Poupança',
-  '/loans': 'Empréstimos',
   '/categories': 'Categorias',
   '/budgets': 'Orçamentos',
   '/reports': 'Relatórios',

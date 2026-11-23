@@ -47,7 +47,7 @@ export function RecurringSummary({
             <Repeat2 className="h-4 w-4 text-primary" />
             Recorrentes Ativos
           </CardTitle>
-          <Link href="/recurring" className="text-xs text-primary hover:underline">
+          <Link href="/bills?tab=fixas" className="text-xs text-primary hover:underline">
             Gerenciar
           </Link>
         </div>
@@ -146,7 +146,7 @@ export function RecurringSummary({
 
         {sorted.length > 5 && (
           <Link
-            href="/recurring"
+            href="/bills?tab=fixas"
             className="block pt-1 text-center text-xs text-primary hover:underline"
           >
             +{sorted.length - 5} recorrências → ver todas

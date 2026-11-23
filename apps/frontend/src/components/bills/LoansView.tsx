@@ -56,7 +56,7 @@ function isOverdue(loan: Loan) {
   return dueDay < todayDay;
 }
 
-export default function LoansPage() {
+export function LoansView() {
   const { data: loans = [], isLoading } = useLoans();
   const { data: summary, isLoading: loadingSummary } = useLoanSummary();
   const { create, update, pay, remove } = useLoanMutations();
@@ -101,7 +101,7 @@ export default function LoansPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold sm:text-2xl">Dívidas</h2>
+          <h2 className="text-lg font-semibold">Dívidas</h2>
           <p className="text-sm text-muted-foreground">Empréstimos, cartões e boletos</p>
         </div>
         <Button size="sm" onClick={() => setLoanModal({ open: true, editing: null })}>

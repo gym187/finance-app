@@ -36,7 +36,7 @@ export function LoansWidget({ loans, totalDebt, isLoading }: LoansWidgetProps) {
             <CreditCard className="h-4 w-4 text-red-500" />
             Empréstimos
           </CardTitle>
-          <Link href="/loans" className="text-xs text-primary hover:underline">Gerenciar</Link>
+          <Link href="/bills?tab=dividas" className="text-xs text-primary hover:underline">Gerenciar</Link>
         </div>
         {!isLoading && totalDebt !== undefined && totalDebt > 0 && (
           <p className="text-xs text-muted-foreground mt-1">

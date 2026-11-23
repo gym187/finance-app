@@ -11,7 +11,6 @@ import {
   BarChart3,
   LogOut,
   LineChart,
-  Repeat2,
   Wallet,
   CreditCard,
   Calculator,
@@ -50,9 +49,8 @@ const navGroups: NavGroup[] = [
     collapsible: true,
     items: [
       { href: '/transactions', label: 'Transações', icon: ArrowLeftRight },
+      { href: '/bills', label: 'Contas a pagar', icon: CreditCard },
       { href: '/investments', label: 'Investimentos', icon: LineChart },
-      { href: '/loans', label: 'Dívidas', icon: CreditCard },
-      { href: '/categories', label: 'Categorias', icon: FolderOpen },
     ],
   },
   {
@@ -60,14 +58,14 @@ const navGroups: NavGroup[] = [
     icon: CalendarRange,
     collapsible: true,
     items: [
-      { href: '/goals', label: 'Metas', icon: Target },
       { href: '/budgets', label: 'Orçamentos', icon: Wallet },
-      { href: '/recurring', label: 'Recorrentes', icon: Repeat2 },
+      { href: '/goals', label: 'Metas', icon: Target },
     ],
   },
   {
     items: [
       { href: '/reports', label: 'Relatórios', icon: BarChart3 },
+      { href: '/categories', label: 'Categorias', icon: FolderOpen },
       { href: '/calculadora', label: 'Calculadora', icon: Calculator },
       { href: '/whatsapp', label: 'WhatsApp', icon: MessageCircle },
     ],
