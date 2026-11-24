@@ -399,7 +399,7 @@ describe('ferramentas confirmar/cancelar', () => {
 });
 
 describe('consultas', () => {
-  it('definições expõem as 7 ferramentas', () => {
+  it('definições expõem as 9 ferramentas', () => {
     expect(buildTools(1).definitions.map((d) => d.name).sort()).toEqual(
       [
         'cancelar_lancamento',
@@ -408,6 +408,7 @@ describe('consultas', () => {
         'consultar_orcamentos',
         'consultar_resumo',
         'consultar_transacoes',
+        'enviar_relatorio',
         'propor_exclusao',
         'propor_lancamento',
       ].sort(),
@@ -612,5 +613,60 @@ describe('exclusão de lançamento', () => {
     setPending(1, { kind: 'delete', transactionId: 7, type: 'EXPENSE', amount: 47, description: 'Mercado', categoryName: 'Mercado', date: '2026-11-20' });
     expect(cancelPending(1)).toMatch(/Nada foi apagado/);
     expect(getPending(1)).toBeNull();
+  });
+});
+
+describe('enviar_relatorio', () => {
+  const dash = (over: object = {}) => ({
+    categoryData: [{ name: 'Casa', value: 70, color: '#d9559a' }],
+    monthlyData: Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String(i + 1).padStart(2, '0')}`, income: 100, expense: 50, balance: 50 })),
+    totalIncome: 100, totalExpense: 50, monthlyBalance: 50, balance: 500,
+    ...over,
+  });
+
+  it('simples: envia só a rosca', async () => {
+    m.getData.mockResolvedValue(dash());
+    const sendImage = vi.fn().mockResolvedValue(undefined);
+    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{}');
+    expect(sendImage).toHaveBeenCalledTimes(1);
+    expect(sendImage.mock.calls[0][0].subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    expect(out).toMatch(/rosca/);
+    expect(out).not.toMatch(/6 meses/);
+  });
+
+  it('completo: envia a rosca e o gráfico de entradas e saídas', async () => {
+    m.getData.mockResolvedValue(dash());
+    const sendImage = vi.fn().mockResolvedValue(undefined);
+    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{"completo":true}');
+    expect(sendImage).toHaveBeenCalledTimes(2);
+    expect(out).toMatch(/rosca.*6 meses/);
+  });
+
+  it('sem despesas no mês: não manda a rosca e avisa', async () => {
+    m.getData.mockResolvedValue(dash({ categoryData: [] }));
+    const sendImage = vi.fn().mockResolvedValue(undefined);
+    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{}');
+    expect(sendImage).not.toHaveBeenCalled();
+    expect(out).toMatch(/Não há despesas/);
+  });
+
+  it('falha no envio devolve o resumo em texto e não lança', async () => {
+    m.getData.mockResolvedValue(dash());
+    const sendImage = vi.fn().mockRejectedValue(new Error('evolution down'));
+    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{}');
+    expect(out).toMatch(/Erro ao enviar a imagem/);
+    expect(out).toMatch(/Resumo do mês/);
+  });
+
+  it('argumentos inválidos caem no relatório simples', async () => {
+    m.getData.mockResolvedValue(dash());
+    const sendImage = vi.fn().mockResolvedValue(undefined);
+    await buildTools(1, { sendImage }).run('enviar_relatorio', 'não é json');
+    expect(sendImage).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem sendImage disponível: erro orientando o resumo em texto', async () => {
+    const out = await buildTools(1).run('enviar_relatorio', '{}');
+    expect(out).toMatch(/indisponível/);
   });
 });

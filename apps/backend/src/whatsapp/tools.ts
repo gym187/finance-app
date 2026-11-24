@@ -4,7 +4,9 @@ import { logger } from '../config/logger';
 import { nowBR } from '../config/date';
 import { transactionService } from '../services/transaction.service';
 import { categoryService } from '../services/category.service';
+import { dashboardService } from '../services/dashboard.service';
 import { runShortcut } from './shortcuts';
+import { categoryDonutPng, incomeExpenseLinePng } from './charts';
 import { formatBRL, normalizeText } from './format';
 import type { ToolDef } from './llm';
 import { getPending, setPending, clearPending, restorePending, type PendingDelete } from './conversation';
@@ -79,6 +81,8 @@ const proposeSchema = z.object({
 const deleteSchema = z.object({
   transactionId: z.number({ invalid_type_error: 'transactionId deve ser número' }).int().positive(),
 });
+
+const reportSchema = z.object({ completo: z.boolean().optional() });
 
 const listSchema = z.object({
   startDate: isoDate.nullish(),
@@ -326,6 +330,16 @@ const definitions: ToolDef[] = [
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'enviar_relatorio',
+    description:
+      'Envia ao usuário, como imagem no WhatsApp, os gráficos do mês. Padrão: rosca de despesas por categoria. Com completo=true: a rosca e também o gráfico de entradas e saídas dos últimos 6 meses. Use quando o usuário pedir "relatório" (completo=false) ou "relatório completo" (completo=true).',
+    parameters: {
+      type: 'object',
+      properties: { completo: { type: 'boolean', description: 'true só para "relatório completo"' } },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'consultar_transacoes',
     description: 'Lista lançamentos com filtros; devolve total encontrado, somas por tipo e os mais recentes.',
     parameters: {
@@ -352,6 +366,45 @@ const definitions: ToolDef[] = [
   },
 ];
 
+const MONTH_NAMES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+/** Gera e envia os gráficos (rosca; com `completo`, também entradas e saídas). Nunca lança. */
+async function sendReport(
+  userId: number,
+  argsJson: string,
+  sendImage?: (png: Buffer, caption?: string) => Promise<void>
+): Promise<string> {
+  if (!sendImage) return 'Erro: envio de imagem indisponível. Responda com o resumo em texto.';
+  let completo = false;
+  try {
+    completo = reportSchema.parse(argsJson ? JSON.parse(argsJson) : {}).completo === true;
+  } catch {
+    /* argumentos inválidos: segue com o relatório simples */
+  }
+  const d = await dashboardService.getData(userId);
+  const mes = MONTH_NAMES[nowBR().getUTCMonth()];
+  const sent: string[] = [];
+  try {
+    if (d.categoryData.length > 0) {
+      await sendImage(categoryDonutPng(d.categoryData, `Despesas por categoria · ${mes}`));
+      sent.push('rosca de despesas por categoria');
+    }
+    if (completo) {
+      await sendImage(incomeExpenseLinePng(d.monthlyData.slice(-6), 'Entradas e saídas · últimos 6 meses'));
+      sent.push('gráfico de entradas e saídas (6 meses)');
+    }
+  } catch (err) {
+    logger.error({ err: safeErr(err), userId }, '[whatsapp] falha ao enviar gráfico');
+    return `Erro ao enviar a imagem. Peça desculpas em uma frase e mostre o resumo em texto:\n${await runShortcut(userId, 'resumo')}`;
+  }
+  const resumo = await runShortcut(userId, 'resumo');
+  if (sent.length === 0) return `Não há despesas neste mês para o gráfico. Diga isso em uma frase e mostre o resumo:\n${resumo}`;
+  return `Enviado ao usuário: ${sent.join(' e ')}. Responda só com uma frase curta, sem repetir os números dos gráficos. Resumo para você:\n${resumo}`;
+}
+
 export type AgentTools = {
   definitions: ToolDef[];
   run(name: string, argsJson: string): Promise<string>;
@@ -365,7 +418,10 @@ export type AgentTools = {
  * Uma instância por rodada do agente. `userText` é a mensagem atual do usuário: sem ela
  * (ou se não for uma afirmação simples) `confirmar_lancamento` não executa.
  */
-export function buildTools(userId: number, opts: { userText?: string } = {}): AgentTools {
+export function buildTools(
+  userId: number,
+  opts: { userText?: string; sendImage?: (png: Buffer, caption?: string) => Promise<void> } = {}
+): AgentTools {
   // Propor e confirmar na mesma rodada é proibido: a confirmação tem de vir do usuário.
   let proposeCalled = false;
   let proposalText: string | null = null;
@@ -404,6 +460,8 @@ export function buildTools(userId: number, opts: { userText?: string } = {}): Ag
         return cancelPending(userId);
       case 'consultar_resumo':
         return runShortcut(userId, 'resumo');
+      case 'enviar_relatorio':
+        return sendReport(userId, argsJson, opts.sendImage);
       case 'consultar_transacoes':
         return listTx(userId, argsJson);
       case 'consultar_orcamentos':

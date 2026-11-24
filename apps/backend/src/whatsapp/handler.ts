@@ -141,7 +141,9 @@ async function handleLinked(userId: number, msg: IncomingMessage, deps: HandlerD
     return;
   }
 
-  let out = await runAgent(userId, text, deps.llm);
+  let out = await runAgent(userId, text, deps.llm, {
+    sendImage: (png, caption) => deps.provider.sendImage(msg.jid, png, caption),
+  });
   if (transcription !== null && getPending(userId) !== null) {
     out = `🎙️ Entendi: "${transcription}"\n\n${out}`;
   }

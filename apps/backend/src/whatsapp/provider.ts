@@ -12,5 +12,6 @@ export interface IncomingMessage {
 export interface WhatsappProvider {
   parseWebhook(body: unknown): IncomingMessage | null;
   sendText(jid: string, text: string): Promise<void>;
+  sendImage(jid: string, png: Buffer, caption?: string): Promise<void>;
   getAudio(msg: IncomingMessage): Promise<Buffer>;
 }

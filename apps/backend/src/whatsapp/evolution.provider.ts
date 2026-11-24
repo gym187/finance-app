@@ -147,6 +147,27 @@ async function sendText(jid: string, text: string): Promise<void> {
   }
 }
 
+async function sendImage(jid: string, png: Buffer, caption?: string): Promise<void> {
+  const res = await evolutionFetch('sendMedia', `${baseUrl()}/message/sendMedia/${instancePath()}`, {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({
+      number: jid,
+      mediatype: 'image',
+      mimetype: 'image/png',
+      media: png.toString('base64'),
+      fileName: 'grafico.png',
+      caption: caption ?? '',
+    }),
+  });
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => '')).slice(0, 200);
+    throw Object.assign(new Error(`Evolution sendMedia falhou (${res.status}): ${detail}`), {
+      status: res.status,
+    });
+  }
+}
+
 async function getAudio(msg: IncomingMessage): Promise<Buffer> {
   const res = await evolutionFetch(
     'getBase64FromMediaMessage',
@@ -171,4 +192,4 @@ async function getAudio(msg: IncomingMessage): Promise<Buffer> {
   return Buffer.from(json.base64, 'base64');
 }
 
-export const evolutionProvider: WhatsappProvider = { parseWebhook, sendText, getAudio };
+export const evolutionProvider: WhatsappProvider = { parseWebhook, sendText, sendImage, getAudio };

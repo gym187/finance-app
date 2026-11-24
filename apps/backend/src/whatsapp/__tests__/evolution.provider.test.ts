@@ -154,6 +154,27 @@ describe('evolutionProvider HTTP', () => {
     expect(JSON.parse(init.body)).toEqual({ number: '5511999998888@s.whatsapp.net', text: 'olá' });
   });
 
+  it('sendImage posts base64 PNG to sendMedia', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, text: async () => '' });
+    vi.stubGlobal('fetch', fetchMock);
+    await evolutionProvider.sendImage('5511999998888@s.whatsapp.net', Buffer.from('png'), 'legenda');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://evo:8080/message/sendMedia/appfin');
+    expect(init.headers.apikey).toBe('secret-key');
+    expect(JSON.parse(init.body)).toMatchObject({
+      number: '5511999998888@s.whatsapp.net',
+      mediatype: 'image',
+      mimetype: 'image/png',
+      media: Buffer.from('png').toString('base64'),
+      caption: 'legenda',
+    });
+  });
+
+  it('sendImage throws on non-2xx', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'bad' }));
+    await expect(evolutionProvider.sendImage('j', Buffer.from('x'))).rejects.toThrow(/sendMedia falhou \(400\)/);
+  });
+
   it('sendText throws on non-2xx', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }));
     await expect(evolutionProvider.sendText('a@s.whatsapp.net', 'x')).rejects.toThrow(/500/);

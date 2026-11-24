@@ -70,6 +70,7 @@ function fakeProvider() {
     sendText: vi.fn(async (jid: string, text: string) => {
       sent.push({ jid, text });
     }),
+    sendImage: vi.fn(async () => undefined),
     getAudio: vi.fn(async () => Buffer.from('audio')),
   };
   return { provider, sent };
@@ -305,7 +306,7 @@ describe('handleIncoming — vinculado', () => {
     const { provider, sent } = fakeProvider();
     await handleIncoming(msg({ text: 'sim' }), { provider, llm: fakeLlm() });
     expect(m.create).not.toHaveBeenCalled();
-    expect(m.runAgent).toHaveBeenCalledWith(1, 'sim', expect.anything());
+    expect(m.runAgent).toHaveBeenCalledWith(1, 'sim', expect.anything(), expect.anything());
     expect(sent[0].text).toBe('resposta do agente');
   });
 
@@ -320,7 +321,7 @@ describe('handleIncoming — vinculado', () => {
     const { provider, sent } = fakeProvider();
     const llm = fakeLlm();
     await handleIncoming(msg({ text: 'gastei 47 no mercado' }), { provider, llm });
-    expect(m.runAgent).toHaveBeenCalledWith(1, 'gastei 47 no mercado', llm);
+    expect(m.runAgent).toHaveBeenCalledWith(1, 'gastei 47 no mercado', llm, expect.anything());
     expect(sent).toEqual([{ jid: LINKED_JID, text: 'resposta do agente' }]);
   });
 
@@ -372,7 +373,7 @@ describe('handleIncoming — vinculado', () => {
     const m1 = msg({ kind: 'audio', text: undefined, audioSeconds: 5 });
     await handleIncoming(m1, { provider, llm: fakeLlm('gastei 47 no mercado') });
     expect(provider.getAudio).toHaveBeenCalledWith(m1);
-    expect(m.runAgent).toHaveBeenCalledWith(1, 'gastei 47 no mercado', expect.anything());
+    expect(m.runAgent).toHaveBeenCalledWith(1, 'gastei 47 no mercado', expect.anything(), expect.anything());
     expect(sent[0].text).toBe('🎙️ Entendi: "gastei 47 no mercado"\n\nConfirma?');
   });
 
