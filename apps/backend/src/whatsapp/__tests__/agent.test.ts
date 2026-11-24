@@ -9,9 +9,10 @@ const m = vi.hoisted(() => ({
   findAllCat: vi.fn(),
   groupBy: vi.fn(),
   logError: vi.fn(),
+  logInfo: vi.fn(),
 }));
 vi.mock('../../config/logger', () => ({
-  logger: { error: m.logError, warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: { error: m.logError, warn: vi.fn(), info: m.logInfo, debug: vi.fn() },
 }));
 vi.mock('../../services/transaction.service', () => ({
   transactionService: { create: m.create, findAll: m.findAllTx },
@@ -22,7 +23,7 @@ vi.mock('../../services/loan.service', () => ({ loanService: { summary: m.summar
 vi.mock('../../services/category.service', () => ({ categoryService: { findAll: m.findAllCat } }));
 vi.mock('../../config/prisma', () => ({ prisma: { transaction: { groupBy: m.groupBy } } }));
 
-import { runAgent } from '../agent';
+import { runAgent, asksConfirmation, PROPOSAL_FAILURE } from '../agent';
 import { getHistory, getPending, _resetConversations } from '../conversation';
 import type { LlmClient, LlmMessage, ToolDef } from '../llm';
 
@@ -293,5 +294,90 @@ describe('runAgent', () => {
     expect(await runAgent(1, 'pode lançar', ok.llm)).toBe('Lançado!');
     expect(m.create).toHaveBeenCalledTimes(1);
     expect(getPending(1)).toBeNull();
+  });
+});
+
+const PROPOSE = (id = 'c1') => ({
+  content: null,
+  toolCalls: [
+    {
+      id,
+      name: 'propor_lancamento',
+      arguments: '{"type":"INCOME","amount":499.34,"description":"Freelancer","categoryId":10}',
+    },
+  ],
+});
+
+describe('asksConfirmation', () => {
+  it.each([
+    ['Lançar *receita* de *R$ 499,34*? Responda *sim* ou *não*', true],
+    ['Confirma? responda sim', true],
+    ['Posso lançar essa despesa?', true],
+    ['Posso excluir esse lançamento?', true],
+    ['Qual foi o valor?', false],
+    ['Você gastou R$ 200,00 este mês. Sim, está dentro do orçamento.', false],
+    ['', false],
+    [null, false],
+  ])('%j → %s', (text, expected) => {
+    expect(asksConfirmation(text as string | null)).toBe(expected);
+  });
+});
+
+describe('runAgent: confirmação sem proposta', () => {
+  it('modelo pede "sim" sem propor: é forçado a chamar a ferramenta e a resposta é a da ferramenta', async () => {
+    const { llm, calls } = fakeLlm([
+      { content: 'Lançar *receita* de *R$ 499,34*? Responda *sim* ou *não*', toolCalls: [] },
+      PROPOSE(),
+      { content: 'parafraseando', toolCalls: [] },
+    ]);
+    const out = await runAgent(1, 'recebi 499,34 de freelancer', llm);
+    expect(out).toContain('Lançar *receita* de *R$ 499,34*');
+    expect(out).toContain('hoje');
+    expect(getPending(1)).toMatchObject({ amount: 499.34 });
+    // a segunda chamada ao modelo recebeu o lembrete de sistema
+    const second = calls[1].messages;
+    expect(second[second.length - 1]).toMatchObject({ role: 'system' });
+    expect(JSON.stringify(second[second.length - 1])).toContain('propor_lancamento');
+    // o lembrete não vai para o histórico
+    expect(JSON.stringify(getHistory(1))).not.toContain('A confirmação só vale');
+  });
+
+  it('insiste em pedir "sim" sem propor: mensagem de falha, sem histórico nem pendência', async () => {
+    const { llm } = fakeLlm(() => ({ content: 'Posso lançar? Responda *sim*', toolCalls: [] }));
+    const out = await runAgent(1, 'recebi 499,34', llm);
+    expect(out).toBe(PROPOSAL_FAILURE);
+    expect(getHistory(1)).toEqual([]);
+    expect(getPending(1)).toBeNull();
+  });
+
+  it('resposta normal sem pedido de confirmação não é afetada', async () => {
+    const { llm, calls } = fakeLlm([{ content: 'Você gastou R$ 200,00 este mês.', toolCalls: [] }]);
+    expect(await runAgent(1, 'quanto gastei?', llm)).toBe('Você gastou R$ 200,00 este mês.');
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe('runAgent: log da rodada', () => {
+  it('registra só nomes de ferramentas e contagens, nunca o conteúdo', async () => {
+    const { llm } = fakeLlm([PROPOSE(), { content: 'ok', toolCalls: [] }]);
+    await runAgent(1, 'recebi 499,34 de freelancer segredo-xyz', llm);
+    const call = m.logInfo.mock.calls.find((c) => c[1] === '[whatsapp] rodada do agente')!;
+    expect(call[0]).toMatchObject({
+      userId: 1,
+      tools: ['propor_lancamento'],
+      iterations: 2,
+      nudged: false,
+      outcome: 'proposta',
+      hadProposal: true,
+    });
+    expect(JSON.stringify(call)).not.toContain('segredo-xyz');
+    expect(JSON.stringify(call)).not.toContain('499');
+  });
+
+  it('registra o desfecho quando o modelo pede "sim" sem propor', async () => {
+    const { llm } = fakeLlm(() => ({ content: 'Responda *sim*', toolCalls: [] }));
+    await runAgent(1, 'x', llm);
+    const call = m.logInfo.mock.calls.find((c) => c[1] === '[whatsapp] rodada do agente')!;
+    expect(call[0]).toMatchObject({ outcome: 'confirmacao_sem_proposta', nudged: true, hadProposal: false });
   });
 });

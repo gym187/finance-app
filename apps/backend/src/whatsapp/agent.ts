@@ -1,11 +1,28 @@
 import { nowBR } from '../config/date';
+import { logger } from '../config/logger';
 import { categoryService } from '../services/category.service';
 import type { LlmClient, LlmMessage } from './llm';
 import { buildTools, type AgentTools } from './tools';
 import { getHistory, appendHistory } from './conversation';
+import { normalizeText } from './format';
 
 const MAX_ITERATIONS = 5;
 export const AGENT_FAILURE = 'Não consegui processar agora, tenta de novo em instantes.';
+export const PROPOSAL_FAILURE =
+  'Não consegui preparar isso agora. Pode mandar de novo, com valor e descrição?';
+
+const PROPOSAL_NUDGE =
+  'Você pediu confirmação ao usuário sem chamar propor_lancamento ou propor_exclusao. A confirmação só vale se a ferramenta for chamada. Chame a ferramenta agora, com os dados completos e corrigidos, e não escreva a pergunta por conta própria.';
+
+/** A resposta do modelo pede um "sim"/confirmação ao usuário? (ex.: "Responda *sim* ou *não*"). */
+export function asksConfirmation(text: string | null): boolean {
+  if (!text) return false;
+  const n = normalizeText(text.replace(/\*/g, ''));
+  return /\bresponda\b.*\bsim\b/.test(n) || /\b(posso|devo) (lancar|excluir|apagar|registrar)\b/.test(n);
+}
+
+/** Resumo de uma rodada para o log: só nomes de ferramentas e contagens, nunca conteúdo. */
+type Trace = { iterations: number; tools: string[]; nudged: boolean; outcome: string };
 
 function todayLabel(): string {
   return new Intl.DateTimeFormat('pt-BR', {
@@ -54,17 +71,26 @@ async function systemPrompt(userId: number): Promise<string> {
  */
 export async function runAgent(userId: number, userText: string, llm: LlmClient): Promise<string> {
   const tools = buildTools(userId, { userText });
+  const trace: Trace = { iterations: 0, tools: [], nudged: false, outcome: 'erro' };
   let succeeded = false;
   try {
-    const reply = await loop(userId, userText, llm, tools);
-    succeeded = reply !== AGENT_FAILURE;
+    const reply = await loop(userId, userText, llm, tools, trace);
+    succeeded = reply !== AGENT_FAILURE && reply !== PROPOSAL_FAILURE;
     return reply;
   } finally {
+    const hadProposal = tools.proposal() !== null;
     if (!succeeded) tools.discardProposal();
+    logger.info({ userId, ...trace, hadProposal }, '[whatsapp] rodada do agente');
   }
 }
 
-async function loop(userId: number, userText: string, llm: LlmClient, tools: AgentTools): Promise<string> {
+async function loop(
+  userId: number,
+  userText: string,
+  llm: LlmClient,
+  tools: AgentTools,
+  trace: Trace,
+): Promise<string> {
   const userMsg: LlmMessage = { role: 'user', content: userText };
   const messages: LlmMessage[] = [
     { role: 'system', content: await systemPrompt(userId) },
@@ -73,11 +99,13 @@ async function loop(userId: number, userText: string, llm: LlmClient, tools: Age
   ];
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    trace.iterations = i + 1;
     const res = await llm.complete(messages, tools.definitions);
 
     if (res.toolCalls.length > 0) {
       messages.push({ role: 'assistant', content: res.content, toolCalls: res.toolCalls });
       for (const tc of res.toolCalls) {
+        trace.tools.push(tc.name);
         const out = await tools.run(tc.name, tc.arguments);
         messages.push({ role: 'tool', toolCallId: tc.id, content: out });
       }
@@ -85,12 +113,30 @@ async function loop(userId: number, userText: string, llm: LlmClient, tools: Age
     }
 
     // Proposta ativa: o texto autoritativo da ferramenta substitui o do modelo.
-    const text = tools.proposal() ?? res.content?.trim();
-    if (!text) return AGENT_FAILURE;
+    const proposal = tools.proposal();
+    // O modelo pediu "sim" sem ter proposto: sem pendência o "sim" do usuário não grava nada
+    // (e uma correção de dados nunca valeria). Obriga a chamar a ferramenta, uma vez.
+    if (!proposal && asksConfirmation(res.content)) {
+      if (trace.nudged) {
+        trace.outcome = 'confirmacao_sem_proposta';
+        return PROPOSAL_FAILURE;
+      }
+      trace.nudged = true;
+      messages.push({ role: 'assistant', content: res.content });
+      messages.push({ role: 'system', content: PROPOSAL_NUDGE });
+      continue;
+    }
+    const text = proposal ?? res.content?.trim();
+    if (!text) {
+      trace.outcome = 'sem_texto';
+      return AGENT_FAILURE;
+    }
+    trace.outcome = proposal ? 'proposta' : 'resposta';
     // Histórico guarda só texto (sem a "encanação" das ferramentas).
     appendHistory(userId, [userMsg, { role: 'assistant', content: text }]);
     return text;
   }
 
+  trace.outcome = 'iteracoes_esgotadas';
   return AGENT_FAILURE;
 }
