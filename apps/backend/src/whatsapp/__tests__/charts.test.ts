@@ -24,9 +24,11 @@ describe('categoryDonutPng', () => {
 
 describe('incomeExpenseLinePng', () => {
   it('gera PNG com um ponto, vários pontos e tudo zerado', () => {
-    expect(incomeExpenseLinePng([{ month: '2026-11', income: 5, expense: 3 }], 't').subarray(0, 4)).toEqual(PNG);
-    const zeros = Array.from({ length: 6 }, (_, i) => ({ month: `2026-0${i + 1}`, income: 0, expense: 0 }));
+    expect(incomeExpenseLinePng([{ label: 'nov', income: 5, expense: 3 }], 't').subarray(0, 4)).toEqual(PNG);
+    const zeros = Array.from({ length: 6 }, (_, i) => ({ label: `d${i}`, income: 0, expense: 0 }));
     expect(incomeExpenseLinePng(zeros, 't').subarray(0, 4)).toEqual(PNG);
     expect(incomeExpenseLinePng([], 't').subarray(0, 4)).toEqual(PNG);
+    const many = Array.from({ length: 120 }, (_, i) => ({ label: `m${i}`, income: i * 10, expense: i * 7 }));
+    expect(incomeExpenseLinePng(many, 't').subarray(0, 4)).toEqual(PNG);
   });
 });

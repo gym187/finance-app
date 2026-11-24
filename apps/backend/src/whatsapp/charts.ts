@@ -4,7 +4,7 @@ import { formatBRL } from './format';
 /** Gráficos do relatório como PNG, desenhados em SVG (sem navegador) e rasterizados com resvg. */
 
 export type CategorySlice = { name: string; value: number; color: string };
-export type MonthPoint = { month: string; income: number; expense: number }; // month: yyyy-MM
+export type SeriesPoint = { label: string; income: number; expense: number };
 
 const BG = '#1d1d21';
 const FG = '#e8e8ea';
@@ -107,19 +107,12 @@ ${legend}
   return toPng(svg);
 }
 
-const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-
-function monthLabel(yyyyMm: string): string {
-  const m = Number(yyyyMm.slice(5, 7));
-  return MONTHS[m - 1] ?? yyyyMm;
-}
-
 function axisLabel(v: number): string {
   return v >= 1000 ? `R$${(v / 1000).toFixed(v >= 10000 ? 0 : 1).replace('.', ',')}k` : `R$${Math.round(v)}`;
 }
 
 /** Linhas de entradas e saídas por mês (mesmo visual do card "Entradas e saídas" do dashboard). */
-export function incomeExpenseLinePng(points: MonthPoint[], title: string): Buffer {
+export function incomeExpenseLinePng(points: SeriesPoint[], title: string): Buffer {
   const W = 640;
   const H = 380;
   const left = 64;
@@ -144,11 +137,19 @@ export function incomeExpenseLinePng(points: MonthPoint[], title: string): Buffe
       return `<line x1="${left}" y1="${y(v)}" x2="${W - right}" y2="${y(v)}" stroke="${GRID}" stroke-dasharray="4 4"/>${text(left - 10, y(v) + 4, axisLabel(v), { size: 11, fill: MUTED, anchor: 'end' })}`;
     })
     .join('');
-  const xs = points.map((p, i) => text(x(i), H - bottom + 24, monthLabel(p.month), { size: 12, fill: MUTED, anchor: 'middle' })).join('');
+  // Poucos rótulos no eixo X: de N em N pontos, e o último só se couber sem encostar no anterior.
+  const stride = Math.max(1, Math.ceil(points.length / 7));
+  const shown: number[] = [];
+  points.forEach((_, i) => {
+    if (i % stride === 0) shown.push(i);
+  });
+  const last = points.length - 1;
+  if (last >= 0 && shown[shown.length - 1] !== last && last - shown[shown.length - 1] > stride / 2) shown.push(last);
+  const xs = shown.map((i) => text(x(i), H - bottom + 24, points[i].label, { size: 12, fill: MUTED, anchor: 'middle' })).join('');
 
   const line = (key: 'income' | 'expense', color: string) => {
     const pts = points.map((p, i) => `${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
-    const dots = points.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p[key]).toFixed(1)}" r="4" fill="${color}"/>`).join('');
+    const dots = (points.length > 40 ? [] : points).map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p[key]).toFixed(1)}" r="4" fill="${color}"/>`).join('');
     return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>${dots}`;
   };
 

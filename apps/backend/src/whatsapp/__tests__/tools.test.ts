@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   summary: vi.fn(),
   findAllCat: vi.fn(),
   groupBy: vi.fn(),
+  findManyTx: vi.fn(),
   logError: vi.fn(),
 }));
 vi.mock('../../config/logger', () => ({
@@ -23,7 +24,7 @@ vi.mock('../../services/dashboard.service', () => ({ dashboardService: { getData
 vi.mock('../../services/budget.service', () => ({ budgetService: { findAll: m.findAllBudget } }));
 vi.mock('../../services/loan.service', () => ({ loanService: { summary: m.summary } }));
 vi.mock('../../services/category.service', () => ({ categoryService: { findAll: m.findAllCat } }));
-vi.mock('../../config/prisma', () => ({ prisma: { transaction: { groupBy: m.groupBy, findFirst: m.findFirstTx } } }));
+vi.mock('../../config/prisma', () => ({ prisma: { transaction: { groupBy: m.groupBy, findFirst: m.findFirstTx, findMany: m.findManyTx } } }));
 
 import {
   getHistory,
@@ -617,33 +618,51 @@ describe('exclusão de lançamento', () => {
 });
 
 describe('enviar_relatorio', () => {
-  const dash = (over: object = {}) => ({
-    categoryData: [{ name: 'Casa', value: 70, color: '#d9559a' }],
-    monthlyData: Array.from({ length: 12 }, (_, i) => ({ month: `2026-${String(i + 1).padStart(2, '0')}`, income: 100, expense: 50, balance: 50 })),
-    totalIncome: 100, totalExpense: 50, monthlyBalance: 50, balance: 500,
-    ...over,
+  // T0 = 2026-11-21 (12h BR). Lançamentos: um de entrada e dois de despesa em categorias diferentes.
+  const tx = (type: 'INCOME' | 'EXPENSE', amount: number, date: string, cat = 'Casa') => ({
+    type, amount, date: new Date(`${date}T00:00:00Z`), category: { name: cat, color: '#d9559a' },
   });
+  const TXS = [tx('INCOME', 100, '2026-11-05'), tx('EXPENSE', -70, '2026-11-10'), tx('EXPENSE', -30, '2026-10-02', 'Comida')];
 
-  it('simples: envia só a rosca', async () => {
-    m.getData.mockResolvedValue(dash());
+  it('padrão: rosca dos últimos 30 dias', async () => {
+    m.findManyTx.mockResolvedValue(TXS);
     const sendImage = vi.fn().mockResolvedValue(undefined);
     const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{}');
     expect(sendImage).toHaveBeenCalledTimes(1);
     expect(sendImage.mock.calls[0][0].subarray(0, 4)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    expect(out).toMatch(/rosca/);
-    expect(out).not.toMatch(/6 meses/);
+    expect(out).toMatch(/últimos 30 dias.*rosca/);
+    const where = m.findManyTx.mock.calls[0][0].where;
+    expect(where.userId).toBe(1);
+    expect(where.date.gte.toISOString()).toBe('2026-10-23T00:00:00.000Z'); // hoje - 29 dias
   });
 
   it('completo: envia a rosca e o gráfico de entradas e saídas', async () => {
-    m.getData.mockResolvedValue(dash());
+    m.findManyTx.mockResolvedValue(TXS);
     const sendImage = vi.fn().mockResolvedValue(undefined);
-    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{"completo":true}');
+    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{"completo":true,"periodo":"6m"}');
     expect(sendImage).toHaveBeenCalledTimes(2);
-    expect(out).toMatch(/rosca.*6 meses/);
+    expect(out).toMatch(/últimos 6 meses.*rosca.*entradas e saídas/);
   });
 
-  it('sem despesas no mês: não manda a rosca e avisa', async () => {
-    m.getData.mockResolvedValue(dash({ categoryData: [] }));
+  it('periodo=mes filtra desde o dia 1 do mês atual; tudo não tem limite inferior', async () => {
+    m.findManyTx.mockResolvedValue(TXS);
+    const sendImage = vi.fn().mockResolvedValue(undefined);
+    await buildTools(1, { sendImage }).run('enviar_relatorio', '{"periodo":"mes"}');
+    expect(m.findManyTx.mock.calls[0][0].where.date.gte.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+    await buildTools(1, { sendImage }).run('enviar_relatorio', '{"periodo":"tudo"}');
+    expect(m.findManyTx.mock.calls[1][0].where.date.gte).toBeUndefined();
+  });
+
+  it('periodo inválido cai no relatório simples dos 30 dias', async () => {
+    m.findManyTx.mockResolvedValue(TXS);
+    const sendImage = vi.fn().mockResolvedValue(undefined);
+    const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{"periodo":"ontem"}');
+    expect(sendImage).toHaveBeenCalledTimes(1);
+    expect(out).toMatch(/últimos 30 dias/);
+  });
+
+  it('sem despesas no período: não manda a rosca e avisa', async () => {
+    m.findManyTx.mockResolvedValue([tx('INCOME', 100, '2026-11-05')]);
     const sendImage = vi.fn().mockResolvedValue(undefined);
     const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{}');
     expect(sendImage).not.toHaveBeenCalled();
@@ -651,18 +670,12 @@ describe('enviar_relatorio', () => {
   });
 
   it('falha no envio devolve o resumo em texto e não lança', async () => {
-    m.getData.mockResolvedValue(dash());
+    m.findManyTx.mockResolvedValue(TXS);
     const sendImage = vi.fn().mockRejectedValue(new Error('evolution down'));
     const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{}');
     expect(out).toMatch(/Erro ao enviar a imagem/);
-    expect(out).toMatch(/Resumo do mês/);
-  });
-
-  it('argumentos inválidos caem no relatório simples', async () => {
-    m.getData.mockResolvedValue(dash());
-    const sendImage = vi.fn().mockResolvedValue(undefined);
-    await buildTools(1, { sendImage }).run('enviar_relatorio', 'não é json');
-    expect(sendImage).toHaveBeenCalledTimes(1);
+    expect(out).toMatch(/Resumo — últimos 30 dias/);
+    expect(out).toMatch(/Despesas: R\$ 100,00/);
   });
 
   it('sem sendImage disponível: erro orientando o resumo em texto', async () => {

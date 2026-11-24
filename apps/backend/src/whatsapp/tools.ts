@@ -4,9 +4,9 @@ import { logger } from '../config/logger';
 import { nowBR } from '../config/date';
 import { transactionService } from '../services/transaction.service';
 import { categoryService } from '../services/category.service';
-import { dashboardService } from '../services/dashboard.service';
 import { runShortcut } from './shortcuts';
 import { categoryDonutPng, incomeExpenseLinePng } from './charts';
+import { buildReport, reportSummary, PERIODOS, PERIODO_PADRAO } from './report';
 import { formatBRL, normalizeText } from './format';
 import type { ToolDef } from './llm';
 import { getPending, setPending, clearPending, restorePending, type PendingDelete } from './conversation';
@@ -82,7 +82,7 @@ const deleteSchema = z.object({
   transactionId: z.number({ invalid_type_error: 'transactionId deve ser número' }).int().positive(),
 });
 
-const reportSchema = z.object({ completo: z.boolean().optional() });
+const reportSchema = z.object({ completo: z.boolean().optional(), periodo: z.enum(['30d', 'mes', '6m', 'tudo']).optional() });
 
 const listSchema = z.object({
   startDate: isoDate.nullish(),
@@ -332,10 +332,13 @@ const definitions: ToolDef[] = [
   {
     name: 'enviar_relatorio',
     description:
-      'Envia ao usuário, como imagem no WhatsApp, os gráficos do mês. Padrão: rosca de despesas por categoria. Com completo=true: a rosca e também o gráfico de entradas e saídas dos últimos 6 meses. Use quando o usuário pedir "relatório" (completo=false) ou "relatório completo" (completo=true).',
+      'Envia ao usuário, como imagem no WhatsApp, os gráficos do período. Padrão: rosca de despesas por categoria. Com completo=true: a rosca e também o gráfico de entradas e saídas. Use quando o usuário pedir "relatório" (completo=false) ou "relatório completo" (completo=true). periodo: 30d = últimos 30 dias (padrão, se o usuário não disser), mes = mês atual, 6m = últimos 6 meses, tudo = todo o período.',
     parameters: {
       type: 'object',
-      properties: { completo: { type: 'boolean', description: 'true só para "relatório completo"' } },
+      properties: {
+        completo: { type: 'boolean', description: 'true só para "relatório completo"' },
+        periodo: { type: 'string', enum: [...PERIODOS], description: 'Omita se o usuário não citou período' },
+      },
       additionalProperties: false,
     },
   },
@@ -366,43 +369,37 @@ const definitions: ToolDef[] = [
   },
 ];
 
-const MONTH_NAMES = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
-
-/** Gera e envia os gráficos (rosca; com `completo`, também entradas e saídas). Nunca lança. */
+/** Gera e envia os gráficos do período (rosca; com `completo`, também entradas e saídas). */
 async function sendReport(
   userId: number,
   argsJson: string,
   sendImage?: (png: Buffer, caption?: string) => Promise<void>
 ): Promise<string> {
   if (!sendImage) return 'Erro: envio de imagem indisponível. Responda com o resumo em texto.';
-  let completo = false;
+  let args: z.infer<typeof reportSchema> = {};
   try {
-    completo = reportSchema.parse(argsJson ? JSON.parse(argsJson) : {}).completo === true;
+    args = reportSchema.parse(argsJson ? JSON.parse(argsJson) : {});
   } catch {
-    /* argumentos inválidos: segue com o relatório simples */
+    /* argumentos inválidos: segue com o relatório simples do período padrão */
   }
-  const d = await dashboardService.getData(userId);
-  const mes = MONTH_NAMES[nowBR().getUTCMonth()];
+  const r = await buildReport(userId, args.periodo ?? PERIODO_PADRAO);
+  const resumo = reportSummary(r);
   const sent: string[] = [];
   try {
-    if (d.categoryData.length > 0) {
-      await sendImage(categoryDonutPng(d.categoryData, `Despesas por categoria · ${mes}`));
+    if (r.slices.length > 0) {
+      await sendImage(categoryDonutPng(r.slices, `Despesas por categoria · ${r.label}`));
       sent.push('rosca de despesas por categoria');
     }
-    if (completo) {
-      await sendImage(incomeExpenseLinePng(d.monthlyData.slice(-6), 'Entradas e saídas · últimos 6 meses'));
-      sent.push('gráfico de entradas e saídas (6 meses)');
+    if (args.completo === true) {
+      await sendImage(incomeExpenseLinePng(r.points, `Entradas e saídas · ${r.label}`));
+      sent.push('gráfico de entradas e saídas');
     }
   } catch (err) {
     logger.error({ err: safeErr(err), userId }, '[whatsapp] falha ao enviar gráfico');
-    return `Erro ao enviar a imagem. Peça desculpas em uma frase e mostre o resumo em texto:\n${await runShortcut(userId, 'resumo')}`;
+    return `Erro ao enviar a imagem. Peça desculpas em uma frase e mostre o resumo em texto:\n${resumo}`;
   }
-  const resumo = await runShortcut(userId, 'resumo');
-  if (sent.length === 0) return `Não há despesas neste mês para o gráfico. Diga isso em uma frase e mostre o resumo:\n${resumo}`;
-  return `Enviado ao usuário: ${sent.join(' e ')}. Responda só com uma frase curta, sem repetir os números dos gráficos. Resumo para você:\n${resumo}`;
+  if (sent.length === 0) return `Não há despesas em ${r.label} para o gráfico. Diga isso em uma frase e mostre o resumo:\n${resumo}`;
+  return `Enviado ao usuário (${r.label}): ${sent.join(' e ')}. Responda só com uma frase curta, sem repetir os números dos gráficos. Resumo para você:\n${resumo}`;
 }
 
 export type AgentTools = {
