@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const m = vi.hoisted(() => ({ findMany: vi.fn() }));
 vi.mock('../../config/prisma', () => ({ prisma: { transaction: { findMany: m.findMany } } }));
 
-import { buildReport } from '../report';
+import { buildReport, reportSummary } from '../report';
 
 // 2026-11-21 15:00 UTC = 12:00 BR
 beforeEach(() => {
@@ -13,56 +13,49 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-const tx = (type: 'INCOME' | 'EXPENSE', amount: number, date: string, cat: string | null = 'Casa') => ({
-  type, amount, date: new Date(`${date}T00:00:00Z`), category: cat ? { name: cat, color: '#111111' } : null,
+const tx = (type: 'INCOME' | 'EXPENSE', amount: number, cat: string | null = 'Casa') => ({
+  type, amount, category: cat ? { name: cat, color: '#111111' } : null,
 });
+const whereOf = () => m.findMany.mock.calls[0][0].where;
 
 describe('buildReport', () => {
-  it('30d: 30 pontos diários com zeros nos dias vazios e somas por categoria', async () => {
-    m.findMany.mockResolvedValue([
-      tx('EXPENSE', -70, '2026-11-10'),
-      tx('EXPENSE', -30, '2026-11-10', 'Comida'),
-      tx('EXPENSE', -5, '2026-11-11'),
-      tx('INCOME', 100, '2026-11-21'),
-    ]);
+  it('30d: janela de hoje-29 até hoje, somas e categorias agrupadas', async () => {
+    m.findMany.mockResolvedValue([tx('EXPENSE', -70), tx('EXPENSE', -30, 'Comida'), tx('EXPENSE', -5), tx('INCOME', 100)]);
     const r = await buildReport(1, '30d');
     expect(r.label).toBe('últimos 30 dias');
-    expect(r.points).toHaveLength(30);
-    expect(r.points[0].label).toBe('23/10');
-    expect(r.points[29]).toMatchObject({ label: '21/11', income: 100, expense: 0 });
-    expect(r.points.find((p) => p.label === '10/11')).toMatchObject({ expense: 100 });
+    expect(whereOf().userId).toBe(1);
+    expect(whereOf().date.gte.toISOString()).toBe('2026-10-23T00:00:00.000Z');
+    expect(whereOf().date.lte.toISOString()).toBe('2026-11-21T00:00:00.000Z');
     expect(r.income).toBe(100);
     expect(r.expense).toBe(105);
     expect(r.slices.find((s) => s.name === 'Casa')?.value).toBe(75);
   });
 
-  it('mes: pontos do dia 1 até hoje; rótulo é o nome do mês', async () => {
+  it('mes: do dia 1; rótulo é o nome do mês', async () => {
     m.findMany.mockResolvedValue([]);
     const r = await buildReport(1, 'mes');
     expect(r.label).toBe('novembro');
-    expect(r.points).toHaveLength(21);
+    expect(whereOf().date.gte.toISOString()).toBe('2026-11-01T00:00:00.000Z');
   });
 
-  it('6m: 6 pontos mensais', async () => {
-    m.findMany.mockResolvedValue([tx('EXPENSE', -10, '2026-06-15')]);
-    const r = await buildReport(1, '6m');
-    expect(r.points.map((p) => p.label)).toEqual(['jun', 'jul', 'ago', 'set', 'out', 'nov']);
-    expect(r.points[0].expense).toBe(10);
-  });
-
-  it('tudo: começa no mês do primeiro lançamento e põe o ano quando cruza anos', async () => {
-    m.findMany.mockResolvedValue([tx('INCOME', 10, '2025-12-03'), tx('EXPENSE', -4, '2026-11-01', null)]);
-    const r = await buildReport(1, 'tudo');
-    expect(r.points).toHaveLength(12);
-    expect(r.points[0].label).toBe('dez/25');
-    expect(r.slices[0].name).toBe('Sem categoria');
-    expect(m.findMany.mock.calls[0][0].where.date.gte).toBeUndefined();
-  });
-
-  it('tudo sem lançamentos: um ponto (mês atual) e sem fatias', async () => {
+  it('6m: do primeiro dia de 5 meses atrás', async () => {
     m.findMany.mockResolvedValue([]);
+    await buildReport(1, '6m');
+    expect(whereOf().date.gte.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+  });
+
+  it('tudo: sem limite inferior; categoria nula vira "Sem categoria"', async () => {
+    m.findMany.mockResolvedValue([tx('EXPENSE', -4, null)]);
     const r = await buildReport(1, 'tudo');
-    expect(r.points).toHaveLength(1);
-    expect(r.slices).toEqual([]);
+    expect(whereOf().date.gte).toBeUndefined();
+    expect(r.slices).toEqual([{ name: 'Sem categoria', value: 4, color: '#6b7280' }]);
+  });
+
+  it('reportSummary traz receitas, despesas e resultado', async () => {
+    m.findMany.mockResolvedValue([tx('INCOME', 100), tx('EXPENSE', -30)]);
+    const txt = reportSummary(await buildReport(1, '30d'));
+    expect(txt).toMatch(/Receitas: R\$ 100,00/);
+    expect(txt).toMatch(/Despesas: R\$ 30,00/);
+    expect(txt).toMatch(/Resultado: R\$ 70,00/);
   });
 });

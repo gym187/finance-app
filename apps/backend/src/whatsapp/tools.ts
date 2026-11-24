@@ -5,7 +5,7 @@ import { nowBR } from '../config/date';
 import { transactionService } from '../services/transaction.service';
 import { categoryService } from '../services/category.service';
 import { runShortcut } from './shortcuts';
-import { categoryDonutPng, incomeExpenseLinePng } from './charts';
+import { categoryDonutPng, summaryCardPng } from './charts';
 import { buildReport, reportSummary, PERIODOS, PERIODO_PADRAO } from './report';
 import { formatBRL, normalizeText } from './format';
 import type { ToolDef } from './llm';
@@ -332,7 +332,7 @@ const definitions: ToolDef[] = [
   {
     name: 'enviar_relatorio',
     description:
-      'Envia ao usuário, como imagem no WhatsApp, os gráficos do período. Padrão: rosca de despesas por categoria. Com completo=true: a rosca e também o gráfico de entradas e saídas. Use quando o usuário pedir "relatório" (completo=false) ou "relatório completo" (completo=true). periodo: 30d = últimos 30 dias (padrão, se o usuário não disser), mes = mês atual, 6m = últimos 6 meses, tudo = todo o período.',
+      'Envia ao usuário, como imagem no WhatsApp, os gráficos do período. Padrão: rosca de despesas por categoria. Com completo=true: também o cartão de entradas, saídas, saldo e taxa de poupança. Use quando o usuário pedir "relatório" (completo=false) ou "relatório completo" (completo=true). periodo: 30d = últimos 30 dias (padrão, se o usuário não disser), mes = mês atual, 6m = últimos 6 meses, tudo = todo o período.',
     parameters: {
       type: 'object',
       properties: {
@@ -369,7 +369,7 @@ const definitions: ToolDef[] = [
   },
 ];
 
-/** Gera e envia os gráficos do período (rosca; com `completo`, também entradas e saídas). */
+/** Gera e envia os gráficos do período (rosca; com `completo`, também o cartão de entradas e saídas). */
 async function sendReport(
   userId: number,
   argsJson: string,
@@ -386,13 +386,13 @@ async function sendReport(
   const resumo = reportSummary(r);
   const sent: string[] = [];
   try {
+    if (args.completo === true) {
+      await sendImage(summaryCardPng({ label: r.label, income: r.income, expense: r.expense }));
+      sent.push('cartão de entradas, saídas e saldo');
+    }
     if (r.slices.length > 0) {
       await sendImage(categoryDonutPng(r.slices, `Despesas por categoria · ${r.label}`));
       sent.push('rosca de despesas por categoria');
-    }
-    if (args.completo === true) {
-      await sendImage(incomeExpenseLinePng(r.points, `Entradas e saídas · ${r.label}`));
-      sent.push('gráfico de entradas e saídas');
     }
   } catch (err) {
     logger.error({ err: safeErr(err), userId }, '[whatsapp] falha ao enviar gráfico');

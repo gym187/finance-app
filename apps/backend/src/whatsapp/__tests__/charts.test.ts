@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { categoryDonutPng, incomeExpenseLinePng } from '../charts';
+import { categoryDonutPng, summaryCardPng } from '../charts';
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 
@@ -22,13 +22,10 @@ describe('categoryDonutPng', () => {
   });
 });
 
-describe('incomeExpenseLinePng', () => {
-  it('gera PNG com um ponto, vários pontos e tudo zerado', () => {
-    expect(incomeExpenseLinePng([{ label: 'nov', income: 5, expense: 3 }], 't').subarray(0, 4)).toEqual(PNG);
-    const zeros = Array.from({ length: 6 }, (_, i) => ({ label: `d${i}`, income: 0, expense: 0 }));
-    expect(incomeExpenseLinePng(zeros, 't').subarray(0, 4)).toEqual(PNG);
-    expect(incomeExpenseLinePng([], 't').subarray(0, 4)).toEqual(PNG);
-    const many = Array.from({ length: 120 }, (_, i) => ({ label: `m${i}`, income: i * 10, expense: i * 7 }));
-    expect(incomeExpenseLinePng(many, 't').subarray(0, 4)).toEqual(PNG);
+describe('summaryCardPng', () => {
+  it('gera PNG com saldo positivo, negativo, sem entradas e tudo zerado', () => {
+    for (const [income, expense] of [[2070.6, 387.09], [100, 500], [0, 50], [0, 0]]) {
+      expect(summaryCardPng({ label: 'últimos 30 dias', income, expense }).subarray(0, 4)).toEqual(PNG);
+    }
   });
 });

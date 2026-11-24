@@ -636,12 +636,12 @@ describe('enviar_relatorio', () => {
     expect(where.date.gte.toISOString()).toBe('2026-10-23T00:00:00.000Z'); // hoje - 29 dias
   });
 
-  it('completo: envia a rosca e o gráfico de entradas e saídas', async () => {
+  it('completo: envia o cartão de entradas e saídas e a rosca', async () => {
     m.findManyTx.mockResolvedValue(TXS);
     const sendImage = vi.fn().mockResolvedValue(undefined);
     const out = await buildTools(1, { sendImage }).run('enviar_relatorio', '{"completo":true,"periodo":"6m"}');
     expect(sendImage).toHaveBeenCalledTimes(2);
-    expect(out).toMatch(/últimos 6 meses.*rosca.*entradas e saídas/);
+    expect(out).toMatch(/últimos 6 meses.*cartão.*rosca/);
   });
 
   it('periodo=mes filtra desde o dia 1 do mês atual; tudo não tem limite inferior', async () => {

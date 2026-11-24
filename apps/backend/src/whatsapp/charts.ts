@@ -4,7 +4,6 @@ import { formatBRL } from './format';
 /** Gráficos do relatório como PNG, desenhados em SVG (sem navegador) e rasterizados com resvg. */
 
 export type CategorySlice = { name: string; value: number; color: string };
-export type SeriesPoint = { label: string; income: number; expense: number };
 
 const BG = '#1d1d21';
 const FG = '#e8e8ea';
@@ -12,6 +11,8 @@ const MUTED = '#9a9ba3';
 const GRID = '#34353c';
 const INCOME = '#6FA981';
 const EXPENSE = '#CD7C6B';
+const ACCENT = '#c8904f';
+const MONO = 'DejaVu Sans Mono';
 const FONT = 'DejaVu Sans';
 const MAX_SLICES = 8;
 
@@ -30,7 +31,9 @@ function safeColor(c: string): string {
 
 function fontFiles(): string[] {
   try {
-    return [require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf'), require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf')];
+    return ['DejaVuSans', 'DejaVuSans-Bold', 'DejaVuSansMono-Bold'].map((f) =>
+      require.resolve(`dejavu-fonts-ttf/ttf/${f}.ttf`)
+    );
   } catch {
     return [];
   }
@@ -46,9 +49,14 @@ function toPng(svg: string): Buffer {
     .asPng();
 }
 
-function text(x: number, y: number, s: string, opts: { size?: number; fill?: string; anchor?: string; bold?: boolean } = {}): string {
-  const { size = 14, fill = FG, anchor = 'start', bold = false } = opts;
-  return `<text x="${x}" y="${y}" font-family="${FONT}" font-size="${size}" fill="${fill}" text-anchor="${anchor}"${bold ? ' font-weight="700"' : ''}>${esc(s)}</text>`;
+function text(
+  x: number,
+  y: number,
+  s: string,
+  opts: { size?: number; fill?: string; anchor?: string; bold?: boolean; mono?: boolean; spacing?: number } = {}
+): string {
+  const { size = 14, fill = FG, anchor = 'start', bold = false, mono = false, spacing = 0 } = opts;
+  return `<text x="${x}" y="${y}" font-family="${mono ? MONO : FONT}"${spacing ? ` letter-spacing="${spacing}"` : ''} font-size="${size}" fill="${fill}" text-anchor="${anchor}"${bold ? ' font-weight="700"' : ''}>${esc(s)}</text>`;
 }
 
 /** Rosca de despesas por categoria + legenda com valores. Agrupa o excedente em "Outras". */
@@ -107,60 +115,38 @@ ${legend}
   return toPng(svg);
 }
 
-function axisLabel(v: number): string {
-  return v >= 1000 ? `R$${(v / 1000).toFixed(v >= 10000 ? 0 : 1).replace('.', ',')}k` : `R$${Math.round(v)}`;
-}
-
-/** Linhas de entradas e saídas por mês (mesmo visual do card "Entradas e saídas" do dashboard). */
-export function incomeExpenseLinePng(points: SeriesPoint[], title: string): Buffer {
+/**
+ * Cartão de resumo do período, no estilo do topo do dashboard: entradas, saídas, saldo,
+ * taxa de poupança e barra de renda comprometida.
+ */
+export function summaryCardPng(d: { label: string; income: number; expense: number }): Buffer {
   const W = 640;
-  const H = 380;
-  const left = 64;
-  const right = 40;
-  const top = 72;
-  const bottom = 64;
-  const pw = W - left - right;
-  const ph = H - top - bottom;
+  const H = 400;
+  const saldo = d.income - d.expense;
+  const rate = d.income > 0 ? Math.round((saldo / d.income) * 100) : 0;
+  const committed = d.income > 0 ? Math.min(100, (d.expense / d.income) * 100) : 0;
+  const label = d.label.charAt(0).toUpperCase() + d.label.slice(1);
+  const barX = 40;
+  const barW = W - 80;
 
-  const maxV = Math.max(1, ...points.flatMap((p) => [p.income, p.expense]));
-  const raw = maxV / 4;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = ([1, 2, 2.5, 5, 10].find((m) => m * mag >= raw) ?? 10) * mag;
-  const ticks = Math.ceil(maxV / step);
-  const ceil = ticks * step;
-  const x = (i: number) => left + (points.length === 1 ? pw / 2 : (i / (points.length - 1)) * pw);
-  const y = (v: number) => top + ph - (v / ceil) * ph;
+  const cell = (cx: number, name: string, value: number, color: string) =>
+    text(cx, 118, name.toUpperCase(), { size: 12, fill: MUTED, anchor: 'middle', spacing: 2 }) +
+    text(cx, 148, formatBRL(value), { size: 20, fill: color, anchor: 'middle', bold: true, mono: true });
 
-  const grid = Array.from({ length: ticks + 1 }, (_, k) => k)
-    .map((k) => {
-      const v = step * k;
-      return `<line x1="${left}" y1="${y(v)}" x2="${W - right}" y2="${y(v)}" stroke="${GRID}" stroke-dasharray="4 4"/>${text(left - 10, y(v) + 4, axisLabel(v), { size: 11, fill: MUTED, anchor: 'end' })}`;
-    })
-    .join('');
-  // Poucos rótulos no eixo X: de N em N pontos, e o último só se couber sem encostar no anterior.
-  const stride = Math.max(1, Math.ceil(points.length / 7));
-  const shown: number[] = [];
-  points.forEach((_, i) => {
-    if (i % stride === 0) shown.push(i);
-  });
-  const last = points.length - 1;
-  if (last >= 0 && shown[shown.length - 1] !== last && last - shown[shown.length - 1] > stride / 2) shown.push(last);
-  const xs = shown.map((i) => text(x(i), H - bottom + 24, points[i].label, { size: 12, fill: MUTED, anchor: 'middle' })).join('');
-
-  const line = (key: 'income' | 'expense', color: string) => {
-    const pts = points.map((p, i) => `${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join(' ');
-    const dots = (points.length > 40 ? [] : points).map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p[key]).toFixed(1)}" r="4" fill="${color}"/>`).join('');
-    return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>${dots}`;
-  };
-
-  const legendY = H - 16;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-<rect width="${W}" height="${H}" fill="${BG}"/>
-${text(32, 38, title, { size: 20, bold: true })}
-${grid}${xs}
-${line('income', INCOME)}${line('expense', EXPENSE)}
-<circle cx="${W / 2 - 70}" cy="${legendY - 4}" r="5" fill="${INCOME}"/>${text(W / 2 - 60, legendY, 'Entradas', { size: 13, fill: MUTED })}
-<circle cx="${W / 2 + 20}" cy="${legendY - 4}" r="5" fill="${EXPENSE}"/>${text(W / 2 + 30, legendY, 'Saídas', { size: 13, fill: MUTED })}
+<rect width="${W}" height="${H}" fill="#121214"/>
+${text(32, 44, 'Visão geral', { size: 22, bold: true })}
+${text(W - 32, 44, label, { size: 15, fill: MUTED, anchor: 'end' })}
+<rect x="24" y="72" width="${W - 48}" height="${H - 96}" rx="16" fill="${BG}" stroke="${GRID}"/>
+${cell(W / 4 + 6, 'Entradas', d.income, INCOME)}${cell((W * 3) / 4 - 6, 'Saídas', d.expense, EXPENSE)}
+<line x1="${W / 2}" y1="90" x2="${W / 2}" y2="166" stroke="${GRID}"/>
+<line x1="24" y1="180" x2="${W - 24}" y2="180" stroke="${GRID}"/>
+${text(40, 218, 'SALDO DO PERÍODO', { size: 12, fill: MUTED, spacing: 2 })}
+${text(40, 270, formatBRL(saldo), { size: 44, bold: true, mono: true })}
+${text(40, 306, `${rate}%`, { size: 16, bold: true })}${text(40 + String(rate).length * 10 + 28, 306, 'taxa de poupança', { size: 16, fill: MUTED })}
+<rect x="${barX}" y="326" width="${barW}" height="8" rx="4" fill="#2c2d33"/>
+${committed > 0 ? `<rect x="${barX}" y="326" width="${Math.max(8, (barW * committed) / 100).toFixed(1)}" height="8" rx="4" fill="${ACCENT}"/>` : ''}
+${text(W - 40, 360, d.income > 0 ? `${Math.round(committed)}% da renda comprometida` : 'sem entradas no período', { size: 13, fill: MUTED, anchor: 'end' })}
 </svg>`;
   return toPng(svg);
 }
